@@ -11,7 +11,8 @@
     "report": "playwright show-report",
     "allure:generate": "allure generate allure-results --clean -o allure-report",
     "allure:serve": "allure serve allure-results",
-    "agent-fixer": "tsx src/agent-fixer/run.ts"
+    "agent-fixer": "tsx src/agent-fixer/run.ts",
+    "failure-analysis": "tsx src/failure-analysis/run.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",
