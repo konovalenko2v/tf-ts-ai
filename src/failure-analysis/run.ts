@@ -17,7 +17,7 @@ const CATEGORY_LABELS: Record<FailureCategory, string> = {
 // "smart" part of retry policy is this verdict: whether the retries this category already spent
 // (or would spend) were worth spending, made visible instead of left implicit in a retry count.
 const RETRY_VERDICTS: Record<FailureCategory, string> = {
-  config: 'Retrying cannot fix this — same missing value every attempt. Budget should be 0; a globalSetup precheck (src/core/global-setup.ts) now fails the whole run before any retries are spent.',
+  config: 'Retrying cannot fix this — same missing value every attempt, budget should be 0. A globalSetup precheck (src/core/global-setup.ts) already guards BOOKER_USERNAME/USER_PASSWORD before any retries are spent; other config failures still burn the full retry budget until they get the same guard.',
   'ai-quota': 'Retrying is correct — the provider itself returns a retry-after delay, and the model fallback (AI_MODEL_FALLBACK) has turned this into a pass on a later attempt before.',
   'ai-healing': 'Retrying rarely helps — the AI looked and found nothing; a second identical attempt is unlikely to differ. Worth a human look at the locator/description, not more retries.',
   assertion: 'Retrying is the right way to tell flake from a real bug — if it fails on every attempt, treat it as a real bug.',
