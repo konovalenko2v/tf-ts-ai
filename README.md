@@ -196,15 +196,24 @@ locator with the working strategy healwright already found and cached in `.self-
    demo fixture (see "Self-Healing UI Locators" above) stays broken on purpose instead of getting "fixed" on
    the first run.
 2. **AI fallback** (`src/agent-fixer/fix-proposer.ts`), only reached when a selector has no exact cache match —
-   most commonly because `SELF_HEAL` wasn't on for the run that produced the recovery, healing itself failed to
-   find a replacement, or the cache didn't make it to this job. There's no DOM snapshot or live browser
-   available here to ground a real proposal (only a sanitized error message and a screenshot path in
-   `.observability/`), so for now this layer just reports which selectors need a human instead of guessing from
-   text alone. A screenshot-driven multimodal call is the natural next step once that's worth building.
+   most commonly because `SELF_HEAL` wasn't on for the run that produced the recovery, or healing itself failed
+   to find a replacement. Unlike the cache layer this is a real agentic call: the Gemini CLI (`gemini -p`,
+   `--approval-mode auto_edit`, reusing the same `AI_API_KEY`/`GEMINI_API_KEY` healwright already needs — no
+   extra paid credential) reads `practice-form.page.ts` itself, edits the broken locator's line directly, and
+   re-runs `npx tsc --noEmit` to confirm the result compiles — the same edit/verify loop a `claude`-driven
+   fallback would run, on a provider that doesn't need a paid key. It's given the failure screenshot from
+   `.observability/` when one exists (recovered-but-passing runs don't produce one, since screenshots are
+   `only-on-failure` — the prompt handles that case explicitly rather than pretending one is always available),
+   and `--allowed-tools` restricts it to file/shell tools only — a dry run showed it reaching for its own
+   `web_search` tool to "research" the page instead of using what was already provided, which is exactly the
+   kind of scope creep a fallback like this needs to be fenced against. A CLI failure (rate limit, quota,
+   network) here is caught and marks only that one selector unresolved — it doesn't discard cache-layer fixes
+   already applied for other selectors in the same run. A `claude`-CLI-driven alternative
+   (`proposeFixWithClaudeCode`, commented out) is the natural upgrade path once a paid `ANTHROPIC_API_KEY` is
+   available.
 
-Then: creates a branch (`agent-fixer/<timestamp>`), applies each resolved fix as a plain string replacement of
-the first `heal.click(...)` argument, runs `npx tsc --noEmit` to confirm the result compiles, and commits,
-pushes, and opens a PR — only if at least one fix was actually applied.
+Then: creates a branch (`agent-fixer/<timestamp>`), and commits, pushes, and opens a PR — only if at least one
+fix (from either layer) was actually applied.
 
 In CI (`.github/workflows/regression.yml`), `agent-fixer` is a separate job from `test`, gated to `success`
 pushes on `master`. The loop guard is that trigger itself: the workflow only fires on `push` to `master` (see
