@@ -94,15 +94,16 @@ jobs:
         uses: actions/deploy-pages@v4
 
   # Proposes a fix (as a PR) when a test passed only because healwright silently recovered a
-  # broken locator at runtime. Runs only on pushes to master — not on PRs, and not when the
-  # triggering branch is itself an agent-fixer branch, to avoid a fixer-PR -> CI -> fixer loop.
+  # broken locator at runtime. The loop guard is this trigger itself: only `push` to `master`
+  # runs this job at all, and `push: branches: [master]` above means a push to an agent-fixer/*
+  # branch (or its PR) never triggers this workflow in the first place — so a fixer PR cannot
+  # spawn another fixer run.
   agent-fixer:
     if: |
       always() &&
       needs.test.result == 'success' &&
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/master' &&
-      !startsWith(github.head_ref, 'agent-fixer/')
+      github.ref == 'refs/heads/master'
     needs: test
     runs-on: ubuntu-latest
     permissions:
@@ -142,6 +143,3 @@ jobs:
           GIT_AUTHOR_EMAIL: agent-fixer@users.noreply.github.com
           GIT_COMMITTER_NAME: agent-fixer
           GIT_COMMITTER_EMAIL: agent-fixer@users.noreply.github.com
-          AI_PROVIDER: 'google'
-          AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          AI_MODEL: 'gemini-3.6-flash'

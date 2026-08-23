@@ -182,37 +182,39 @@ fire on the exact class of bug it exists for. Instead it reads `.observability/`
 steps — a locator broke in source but was recovered live by healwright — and proposes replacing the broken
 locator with the working strategy healwright already found and cached in `.self-heal/healed_locators.json`.
 
-`npm run agent-fixer`:
+`npm run agent-fixer` works in two layers, deliberately in that order:
 
-1. Reads the latest `.observability/run-*.jsonl` for `passed_with_recovery` steps and collects every broken
-   selector from their `recoveredErrors[]`, dropping any selector whose `heal.click(...)` line in source is
-   preceded by an `agent-fixer: skip` comment (checked in code, not left to the model) — that's how the
-   `#react-select-3-option-broken` healwright demo fixture (see "Self-Healing UI Locators" above) stays broken
-   on purpose instead of getting "fixed" on the first run.
-2. Sends the remaining broken selectors, plus the raw contents of `.self-heal/healed_locators.json`, to Gemini
-   (`src/agent-fixer/fix-proposer.ts`, reusing the same `AI_API_KEY` healwright already needs — no extra paid
-   credential required) and asks for a small structured JSON response: for each selector, a Playwright locator
-   expression built from the strategy healwright already found and cached, or `found: false` if it can't
-   confidently match one. The join between a broken selector and its healed replacement happens inside that
-   prompt (each cache entry's `context` field is the `contextName` argument already paired with the broken
-   locator in source).
-3. Creates a branch (`agent-fixer/<timestamp>`), applies each confident fix as a plain string replacement of
-   the first `heal.click(...)` argument, and runs `npx tsc --noEmit` to confirm the result compiles.
-4. Commits, pushes, and opens a PR — only if at least one fix was actually applied.
+1. **Deterministic cache lookup** (`src/agent-fixer/cache-lookup.ts`, no AI call). Reads the latest
+   `.observability/run-*.jsonl` for `passed_with_recovery` steps and collects every broken selector from their
+   `recoveredErrors[]`. For each one, `run.ts` finds its `heal.click(locator('<selector>'), '<contextName>')`
+   line in source and extracts `contextName` — the exact join key into `.self-heal/healed_locators.json` (each
+   cache entry's `context` field is that same string). An exact match means healwright already did the work of
+   finding a replacement at runtime; building the Playwright locator expression from the cached strategy
+   (`role`/`css`/`text`/...) is then a fixed template per type, not a decision an LLM needs to make. Selectors
+   whose `heal.click(...)` line is preceded by an `agent-fixer: skip` comment are dropped before this lookup
+   even runs (checked in code, not left to a model) — that's how the `#react-select-3-option-broken` healwright
+   demo fixture (see "Self-Healing UI Locators" above) stays broken on purpose instead of getting "fixed" on
+   the first run.
+2. **AI fallback** (`src/agent-fixer/fix-proposer.ts`), only reached when a selector has no exact cache match —
+   most commonly because `SELF_HEAL` wasn't on for the run that produced the recovery, healing itself failed to
+   find a replacement, or the cache didn't make it to this job. There's no DOM snapshot or live browser
+   available here to ground a real proposal (only a sanitized error message and a screenshot path in
+   `.observability/`), so for now this layer just reports which selectors need a human instead of guessing from
+   text alone. A screenshot-driven multimodal call is the natural next step once that's worth building.
 
-A `claude`-CLI-driven alternative (`proposeFixesWithClaudeCode`, commented out in `fix-proposer.ts`) reads and
-edits the file itself instead of returning structured JSON for `run.ts` to apply — it generalizes better to
-fixes more complex than "replace one argument," at the cost of needing a paid `ANTHROPIC_API_KEY`. Swap the
-import in `run.ts` to switch once that's available.
+Then: creates a branch (`agent-fixer/<timestamp>`), applies each resolved fix as a plain string replacement of
+the first `heal.click(...)` argument, runs `npx tsc --noEmit` to confirm the result compiles, and commits,
+pushes, and opens a PR — only if at least one fix was actually applied.
 
 In CI (`.github/workflows/regression.yml`), `agent-fixer` is a separate job from `test`, gated to `success`
-pushes on `master` and skipped when the triggering branch already starts with `agent-fixer/` (the loop guard —
-without it, a fixer PR that got its own CI run and produced another recovery would spawn a fixer PR of its
-own). `test` keeps its default `contents: read` permission and hands `.observability/`/`.self-heal/` to
-`agent-fixer` via `actions/upload-artifact` + `actions/download-artifact`, so only the job that actually needs
-to push and open a PR carries `contents: write`/`pull-requests: write` — and pushes with a `FIXER_PAT` secret
-rather than the default `GITHUB_TOKEN`, since PRs opened with the default token don't trigger their own CI run
-(which is also why the PAT is what makes the fixer's own PR reviewable with a real test run instead of blind).
+pushes on `master`. The loop guard is that trigger itself: the workflow only fires on `push` to `master` (see
+the `on:` block), so pushing an `agent-fixer/*` branch — or opening a PR from one — never triggers this
+workflow at all, and a fixer PR can't spawn another fixer run. `test` keeps its default `contents: read`
+permission and hands `.observability/`/`.self-heal/` to `agent-fixer` via `actions/upload-artifact` +
+`actions/download-artifact`, so only the job that actually needs to push and open a PR carries
+`contents: write`/`pull-requests: write` — and pushes with a `FIXER_PAT` secret rather than the default
+`GITHUB_TOKEN`, since PRs opened with the default token don't trigger their own CI run (which is also why the
+PAT is what makes the fixer's own PR reviewable with a real test run instead of blind).
 
 ## Reports
 

@@ -1,40 +1,70 @@
 import * as fs from 'fs';
 import { execFileSync } from 'child_process';
 import { findRecoveries } from './find-recoveries';
-import { proposeFixesWithGemini } from './fix-proposer';
+import { findByContext, loadHealedCache, renderLocatorExpression } from './cache-lookup';
+import { proposeFallbackFix } from './fix-proposer';
 
 const SELF_HEAL_CACHE = '.self-heal/healed_locators.json';
 const TARGET_FILE = 'src/ui/pages/practice-form.page.ts';
 const BRANCH_PREFIX = 'agent-fixer/';
 const SKIP_MARKER = 'agent-fixer: skip';
 
+interface BrokenLocator {
+  selector: string;
+  contextName: string;
+  lineIndex: number;
+}
+
 function currentBranch(): string {
   return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD']).toString().trim();
 }
 
-// True if a line within `contextLines` above the match carries the skip marker.
-function isSkipped(fileLines: string[], matchLineIndex: number, contextLines = 3): boolean {
-  const start = Math.max(0, matchLineIndex - contextLines);
-  return fileLines.slice(start, matchLineIndex + 1).some((l) => l.includes(SKIP_MARKER));
+// A selector is skipped if the nearest non-blank line above it is a comment carrying the marker
+// — walking up stops at the first real code line, so it can't leak across an unrelated line.
+function isSkipped(fileLines: string[], matchLineIndex: number): boolean {
+  for (let i = matchLineIndex - 1; i >= 0; i--) {
+    const trimmed = fileLines[i].trim();
+    if (trimmed === '') continue;
+    if (!trimmed.startsWith('//')) return false;
+    if (trimmed.includes(SKIP_MARKER)) return true;
+  }
+  return false;
 }
 
-function applyReplacement(selector: string, replacementCode: string): boolean {
+// Finds each broken selector's line in source and extracts the contextName paired with it in
+// `heal.click(locator('<selector>'), '<contextName>')` — that contextName is the exact join key
+// into healwright's cache (cache entry `context` field), so this is done once here rather than
+// re-derived downstream.
+function locateInSource(brokenSelectors: string[]): BrokenLocator[] {
+  const lines = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n');
+  const found: BrokenLocator[] = [];
+  for (const selector of brokenSelectors) {
+    const lineIndex = lines.findIndex((l) => l.includes(`this.page.locator('${selector}')`));
+    if (lineIndex === -1) {
+      process.stderr.write(`[agent-fixer] selector ${selector} not found in ${TARGET_FILE} — skipping\n`);
+      continue;
+    }
+    if (isSkipped(lines, lineIndex)) {
+      process.stderr.write(`[agent-fixer] ${selector} is marked "${SKIP_MARKER}" — leaving it untouched\n`);
+      continue;
+    }
+    const contextMatch = lines[lineIndex].match(/,\s*'([^']+)'\s*\)/);
+    if (!contextMatch) {
+      process.stderr.write(`[agent-fixer] could not extract contextName for ${selector} — skipping\n`);
+      continue;
+    }
+    found.push({ selector, contextName: contextMatch[1], lineIndex });
+  }
+  return found;
+}
+
+function applyReplacement(lineIndex: number, selector: string, replacementCode: string): void {
   const source = fs.readFileSync(TARGET_FILE, 'utf-8');
   const lines = source.split('\n');
   const needle = `this.page.locator('${selector}')`;
-  const lineIndex = lines.findIndex((l) => l.includes(needle));
-  if (lineIndex === -1) {
-    process.stderr.write(`[agent-fixer] selector ${selector} not found in ${TARGET_FILE} — skipping\n`);
-    return false;
-  }
-  if (isSkipped(lines, lineIndex)) {
-    process.stderr.write(`[agent-fixer] ${selector} is marked "${SKIP_MARKER}" — leaving it untouched\n`);
-    return false;
-  }
   const replacementWithThis = replacementCode.startsWith('page.') ? `this.${replacementCode}` : replacementCode;
   lines[lineIndex] = lines[lineIndex].replace(needle, replacementWithThis);
   fs.writeFileSync(TARGET_FILE, lines.join('\n'));
-  return true;
 }
 
 async function main(): Promise<void> {
@@ -56,39 +86,41 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!fs.existsSync(SELF_HEAL_CACHE)) {
-    process.stderr.write(`[agent-fixer] recoveries found but ${SELF_HEAL_CACHE} is missing — cannot propose a fix\n`);
-    return;
-  }
-  const healedCacheJson = fs.readFileSync(SELF_HEAL_CACHE, 'utf-8');
-
-  // Drop selectors marked "agent-fixer: skip" in source before even asking the model —
-  // no point spending a call proposing a fix we won't apply.
-  const sourceLines = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n');
-  const candidateSelectors = [...brokenSelectors].filter((selector) => {
-    const lineIndex = sourceLines.findIndex((l) => l.includes(`this.page.locator('${selector}')`));
-    return lineIndex !== -1 && !isSkipped(sourceLines, lineIndex);
-  });
-
-  if (candidateSelectors.length === 0) {
-    process.stderr.write('[agent-fixer] all recovered selectors are marked "agent-fixer: skip" — nothing to fix\n');
+  const candidates = locateInSource([...brokenSelectors]);
+  if (candidates.length === 0) {
+    process.stderr.write('[agent-fixer] nothing left to fix after applying skip markers\n');
     return;
   }
 
-  const proposals = await proposeFixesWithGemini(candidateSelectors, healedCacheJson);
+  const cache = fs.existsSync(SELF_HEAL_CACHE) ? loadHealedCache(fs.readFileSync(SELF_HEAL_CACHE, 'utf-8')) : {};
 
   const branch = `${BRANCH_PREFIX}${Date.now()}`;
   execFileSync('git', ['checkout', '-b', branch], { stdio: 'inherit' });
 
-  const applied: { selector: string; replacementCode: string }[] = [];
-  for (const proposal of proposals) {
-    if (!proposal.found || !proposal.replacementCode) {
-      process.stderr.write(`[agent-fixer] no confident fix for ${proposal.selector}: ${proposal.reason ?? 'unknown'}\n`);
+  const applied: { selector: string; replacementCode: string; source: 'cache' | 'fallback' }[] = [];
+  const unresolved: { selector: string; reason: string }[] = [];
+
+  for (const candidate of candidates) {
+    // Layer 1: deterministic cache lookup — no AI call, healwright already did the work.
+    const strategy = findByContext(cache, candidate.contextName);
+    const cachedExpr = strategy ? renderLocatorExpression(strategy) : undefined;
+    if (cachedExpr) {
+      applyReplacement(candidate.lineIndex, candidate.selector, cachedExpr);
+      applied.push({ selector: candidate.selector, replacementCode: cachedExpr, source: 'cache' });
       continue;
     }
-    if (applyReplacement(proposal.selector, proposal.replacementCode)) {
-      applied.push({ selector: proposal.selector, replacementCode: proposal.replacementCode });
-    }
+
+    // Layer 2: AI fallback — only reached when the cache has no exact answer.
+    const fallback = await proposeFallbackFix(candidate.selector, candidate.contextName);
+    unresolved.push({ selector: fallback.selector, reason: fallback.reason });
+  }
+
+  if (unresolved.length > 0) {
+    process.stderr.write(
+      `[agent-fixer] ${unresolved.length} selector(s) need a human:\n` +
+        unresolved.map((u) => `  - ${u.selector}: ${u.reason}`).join('\n') +
+        '\n',
+    );
   }
 
   if (applied.length === 0) {
@@ -122,8 +154,15 @@ async function main(): Promise<void> {
       [
         'Auto-generated by agent-fixer from `.observability/` `passed_with_recovery` records.',
         '',
-        'Fixes applied:',
+        'Fixes applied (from the healwright cache, no AI call):',
         ...applied.map((f) => `- \`${f.selector}\` -> \`${f.replacementCode}\``),
+        ...(unresolved.length > 0
+          ? [
+              '',
+              'Selectors that still need a human:',
+              ...unresolved.map((u) => `- \`${u.selector}\`: ${u.reason}`),
+            ]
+          : []),
         '',
         `See \`${SELF_HEAL_CACHE}\` in this branch for the exact strategy/confidence healwright used to recover each one at runtime — review the confidence before merging, a low-confidence match may be overfit to one page state.`,
       ].join('\n'),
