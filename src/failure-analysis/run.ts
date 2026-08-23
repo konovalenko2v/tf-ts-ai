@@ -12,6 +12,18 @@ const CATEGORY_LABELS: Record<FailureCategory, string> = {
   other: 'Uncategorized',
 };
 
+// Playwright's retries setting is static per-project, decided before the run starts — there's no
+// hook to grant or deny a retry per-attempt based on why the previous attempt failed. So the
+// "smart" part of retry policy is this verdict: whether the retries this category already spent
+// (or would spend) were worth spending, made visible instead of left implicit in a retry count.
+const RETRY_VERDICTS: Record<FailureCategory, string> = {
+  config: 'Retrying cannot fix this — same missing value every attempt. Budget should be 0; a globalSetup precheck (src/core/global-setup.ts) now fails the whole run before any retries are spent.',
+  'ai-quota': 'Retrying is correct — the provider itself returns a retry-after delay, and the model fallback (AI_MODEL_FALLBACK) has turned this into a pass on a later attempt before.',
+  'ai-healing': 'Retrying rarely helps — the AI looked and found nothing; a second identical attempt is unlikely to differ. Worth a human look at the locator/description, not more retries.',
+  assertion: 'Retrying is the right way to tell flake from a real bug — if it fails on every attempt, treat it as a real bug.',
+  other: 'No established policy yet — falls back to the project default retry count.',
+};
+
 function renderReport(runFile: string, groups: ReturnType<typeof groupFailures>, recoveries: ReturnType<typeof summarizeRecoveries>): string {
   const lines: string[] = [];
   lines.push(`# Failure analysis — ${path.basename(runFile)}`, '');
@@ -25,6 +37,7 @@ function renderReport(runFile: string, groups: ReturnType<typeof groupFailures>,
       const flakyNote = g.allFlaky ? ' — passed on retry (flaky)' : '';
       lines.push(`## ${CATEGORY_LABELS[g.category]} — ${g.count} test(s)${flakyNote}`, '');
       lines.push(`Signature: \`${g.signature}\``, '');
+      lines.push(`Retry verdict: ${RETRY_VERDICTS[g.category]}`, '');
       lines.push('Affected tests:');
       for (const p of g.testTitlePaths) lines.push(`- ${p.trim()}`);
       lines.push('', '<details><summary>Sample error message</summary>', '', '```', g.sampleMessage, '```', '</details>', '');
