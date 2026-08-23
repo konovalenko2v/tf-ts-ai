@@ -45,9 +45,11 @@ export class PracticeFormPage {
   async fillAddressAndSelectLocation(address: string) {
     await this.page.locator('#currentAddress').fill(address);
     await this.page.locator('#state').click();
+    // healwright-demo: intentionally broken locator, reserved for the self-healing demo (README
+    // "Self-Healing UI Locators"). agent-fixer: skip — do not propose a fix for this line.
     await this.page.heal.click(this.page.locator('#react-select-3-option-broken'), 'First suggested option in the state dropdown');
     await this.page.locator('#city').click();
-    await this.page.heal.click(this.page.locator('#react-select-4-option-0'), 'First suggested option in the city dropdown');
+    await this.page.heal.click(this.page.locator('#react-select-4-option-broken'), 'First suggested option in the city dropdown');
   }
 
   async clickSubmit() {
