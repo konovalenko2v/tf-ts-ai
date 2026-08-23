@@ -102,14 +102,15 @@ jobs:
   # because an unrelated api test flaked in the same run. agent-fixer's own script exits cleanly
   # with nothing to do when .observability/ has no passed_with_recovery records, so running it
   # unconditionally here is safe — it just costs an extra job start on runs with nothing to fix.
-  # The loop guard is the trigger itself: only `push` to `master` runs this job at all, and
-  # `push: branches: [master]` above means a push to an agent-fixer/* branch (or its PR) never
-  # triggers this workflow in the first place — so a fixer PR cannot spawn another fixer run.
+  # Allowed triggers are `push` and manual `workflow_dispatch` against master — both only ever
+  # target master (there's no UI to manually dispatch against an agent-fixer/* branch, and
+  # `push: branches: [master]` means a push to that branch never triggers this workflow at all),
+  # so the loop guard holds for both: a fixer PR cannot spawn another fixer run.
   agent-fixer:
     if: |
       always() &&
       needs.test.result != 'skipped' &&
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       github.ref == 'refs/heads/master'
     needs: test
     runs-on: ubuntu-latest
