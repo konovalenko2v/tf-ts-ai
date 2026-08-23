@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ObservabilityEvent, StepEvent } from '../observability/types';
+import { ObservabilityEvent, StepEvent, TestSummaryEvent } from '../observability/types';
 
 const OBSERVABILITY_DIR = '.observability';
 
@@ -14,14 +14,28 @@ function latestRunFile(): string | undefined {
   return files[0];
 }
 
+function readEvents(file: string): ObservabilityEvent[] {
+  const lines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean);
+  return lines.map((l) => JSON.parse(l) as ObservabilityEvent);
+}
+
 export function findRecoveries(runFile?: string): StepEvent[] {
   const file = runFile ?? latestRunFile();
   if (!file) return [];
-  const lines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean);
-  const events = lines.map((l) => JSON.parse(l) as ObservabilityEvent);
-  return events.filter(
+  return readEvents(file).filter(
     (e): e is StepEvent => e.type === 'step' && e.outcome === 'passed_with_recovery',
   );
+}
+
+// A recovered step's testId identifies the test attempt it belongs to; the screenshot Playwright
+// captured for that same attempt lives in the test-level summary record, not the step record.
+export function findScreenshotForTest(testId: string, runFile?: string): string | undefined {
+  const file = runFile ?? latestRunFile();
+  if (!file) return undefined;
+  const testEvent = readEvents(file).find(
+    (e): e is TestSummaryEvent => e.type === 'test' && e.testId === testId,
+  );
+  return testEvent?.artifacts.find((a) => a.name === 'screenshot')?.path;
 }
 
 if (require.main === module) {

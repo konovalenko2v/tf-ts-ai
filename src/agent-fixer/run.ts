@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import { execFileSync } from 'child_process';
-import { findRecoveries } from './find-recoveries';
+import { findRecoveries, findScreenshotForTest } from './find-recoveries';
 import { findByContext, loadHealedCache, renderLocatorExpression } from './cache-lookup';
-import { proposeFallbackFix } from './fix-proposer';
+import { proposeFixWithGemini } from './fix-proposer';
 
 const SELF_HEAL_CACHE = '.self-heal/healed_locators.json';
 const TARGET_FILE = 'src/ui/pages/practice-form.page.ts';
@@ -13,6 +13,7 @@ interface BrokenLocator {
   selector: string;
   contextName: string;
   lineIndex: number;
+  testId: string;
 }
 
 function currentBranch(): string {
@@ -35,10 +36,10 @@ function isSkipped(fileLines: string[], matchLineIndex: number): boolean {
 // `heal.click(locator('<selector>'), '<contextName>')` — that contextName is the exact join key
 // into healwright's cache (cache entry `context` field), so this is done once here rather than
 // re-derived downstream.
-function locateInSource(brokenSelectors: string[]): BrokenLocator[] {
+function locateInSource(brokenSelectors: Map<string, string>): BrokenLocator[] {
   const lines = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n');
   const found: BrokenLocator[] = [];
-  for (const selector of brokenSelectors) {
+  for (const [selector, testId] of brokenSelectors) {
     const lineIndex = lines.findIndex((l) => l.includes(`this.page.locator('${selector}')`));
     if (lineIndex === -1) {
       process.stderr.write(`[agent-fixer] selector ${selector} not found in ${TARGET_FILE} — skipping\n`);
@@ -53,7 +54,7 @@ function locateInSource(brokenSelectors: string[]): BrokenLocator[] {
       process.stderr.write(`[agent-fixer] could not extract contextName for ${selector} — skipping\n`);
       continue;
     }
-    found.push({ selector, contextName: contextMatch[1], lineIndex });
+    found.push({ selector, contextName: contextMatch[1], lineIndex, testId });
   }
   return found;
 }
@@ -74,10 +75,10 @@ async function main(): Promise<void> {
   }
 
   const recoveries = findRecoveries();
-  const brokenSelectors = new Set<string>();
+  const brokenSelectors = new Map<string, string>(); // selector -> testId
   for (const step of recoveries) {
     for (const err of step.recoveredErrors ?? []) {
-      if (err.selector) brokenSelectors.add(err.selector);
+      if (err.selector) brokenSelectors.set(err.selector, step.testId);
     }
   }
 
@@ -86,7 +87,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const candidates = locateInSource([...brokenSelectors]);
+  const candidates = locateInSource(brokenSelectors);
   if (candidates.length === 0) {
     process.stderr.write('[agent-fixer] nothing left to fix after applying skip markers\n');
     return;
@@ -97,8 +98,8 @@ async function main(): Promise<void> {
   const branch = `${BRANCH_PREFIX}${Date.now()}`;
   execFileSync('git', ['checkout', '-b', branch], { stdio: 'inherit' });
 
-  const applied: { selector: string; replacementCode: string; source: 'cache' | 'fallback' }[] = [];
-  const unresolved: { selector: string; reason: string }[] = [];
+  const applied: { selector: string; replacementCode: string; source: 'cache' | 'gemini-fallback' }[] = [];
+  const unresolved: string[] = [];
 
   for (const candidate of candidates) {
     // Layer 1: deterministic cache lookup — no AI call, healwright already did the work.
@@ -110,17 +111,22 @@ async function main(): Promise<void> {
       continue;
     }
 
-    // Layer 2: AI fallback — only reached when the cache has no exact answer.
-    const fallback = await proposeFallbackFix(candidate.selector, candidate.contextName);
-    unresolved.push({ selector: fallback.selector, reason: fallback.reason });
+    // Layer 2: AI fallback — only reached when the cache has no exact answer. The Gemini CLI
+    // edits TARGET_FILE itself; detect whether it actually changed the broken selector's line.
+    const before = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n')[candidate.lineIndex];
+    const screenshotPath = findScreenshotForTest(candidate.testId);
+    proposeFixWithGemini(candidate.selector, candidate.contextName, TARGET_FILE, screenshotPath);
+    const afterLines = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n');
+    const after = afterLines[candidate.lineIndex];
+    if (after !== before && !after.includes(candidate.selector)) {
+      applied.push({ selector: candidate.selector, replacementCode: after.trim(), source: 'gemini-fallback' });
+    } else {
+      unresolved.push(candidate.selector);
+    }
   }
 
   if (unresolved.length > 0) {
-    process.stderr.write(
-      `[agent-fixer] ${unresolved.length} selector(s) need a human:\n` +
-        unresolved.map((u) => `  - ${u.selector}: ${u.reason}`).join('\n') +
-        '\n',
-    );
+    process.stderr.write(`[agent-fixer] ${unresolved.length} selector(s) still need a human: ${unresolved.join(', ')}\n`);
   }
 
   if (applied.length === 0) {
@@ -154,17 +160,15 @@ async function main(): Promise<void> {
       [
         'Auto-generated by agent-fixer from `.observability/` `passed_with_recovery` records.',
         '',
-        'Fixes applied (from the healwright cache, no AI call):',
-        ...applied.map((f) => `- \`${f.selector}\` -> \`${f.replacementCode}\``),
+        'Fixes applied:',
+        ...applied.map(
+          (f) => `- \`${f.selector}\` -> \`${f.replacementCode}\` (${f.source === 'cache' ? 'from healwright cache, no AI call' : 'Gemini fallback, no cache match'})`,
+        ),
         ...(unresolved.length > 0
-          ? [
-              '',
-              'Selectors that still need a human:',
-              ...unresolved.map((u) => `- \`${u.selector}\`: ${u.reason}`),
-            ]
+          ? ['', 'Selectors that still need a human:', ...unresolved.map((s) => `- \`${s}\``)]
           : []),
         '',
-        `See \`${SELF_HEAL_CACHE}\` in this branch for the exact strategy/confidence healwright used to recover each one at runtime — review the confidence before merging, a low-confidence match may be overfit to one page state.`,
+        `See \`${SELF_HEAL_CACHE}\` in this branch for the exact strategy/confidence healwright used to recover the cache-layer fixes at runtime — review the confidence before merging, a low-confidence match may be overfit to one page state. Gemini-fallback fixes have no such record and deserve closer review.`,
       ].join('\n'),
     ],
     { stdio: 'inherit' },
