@@ -44,6 +44,7 @@ jobs:
           AI_PROVIDER: 'google'
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_MODEL: 'gemini-3.6-flash'
+          AI_MODEL_FALLBACK: 'gemini-3.5-flash'
 
       - name: Generate Allure Report
         if: always()
