@@ -69,6 +69,7 @@ jobs:
         with:
           name: observability
           path: .observability/
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: ignore
 
@@ -78,6 +79,7 @@ jobs:
         with:
           name: self-heal-cache
           path: .self-heal/
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: ignore
 
@@ -132,13 +134,18 @@ jobs:
       - name: Install Gemini CLI
         run: npm install -g @google/gemini-cli
 
+      # continue-on-error: a run with nothing to fix (e.g. no UI recovery this time) legitimately
+      # produces an empty/missing artifact — run.ts already exits 0 in that case, so the download
+      # step failing must not fail the job ahead of that clean no-op path.
       - name: Download observability data
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: observability
           path: .observability/
 
       - name: Download healwright cache
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: self-heal-cache
