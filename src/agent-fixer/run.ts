@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import { execFileSync } from 'child_process';
 import { findRecoveries } from './find-recoveries';
+import { proposeFixesWithGemini } from './fix-proposer';
 
 const SELF_HEAL_CACHE = '.self-heal/healed_locators.json';
+const TARGET_FILE = 'src/ui/pages/practice-form.page.ts';
 const BRANCH_PREFIX = 'agent-fixer/';
 const SKIP_MARKER = 'agent-fixer: skip';
 
@@ -10,7 +12,32 @@ function currentBranch(): string {
   return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD']).toString().trim();
 }
 
-function main(): void {
+// True if a line within `contextLines` above the match carries the skip marker.
+function isSkipped(fileLines: string[], matchLineIndex: number, contextLines = 3): boolean {
+  const start = Math.max(0, matchLineIndex - contextLines);
+  return fileLines.slice(start, matchLineIndex + 1).some((l) => l.includes(SKIP_MARKER));
+}
+
+function applyReplacement(selector: string, replacementCode: string): boolean {
+  const source = fs.readFileSync(TARGET_FILE, 'utf-8');
+  const lines = source.split('\n');
+  const needle = `this.page.locator('${selector}')`;
+  const lineIndex = lines.findIndex((l) => l.includes(needle));
+  if (lineIndex === -1) {
+    process.stderr.write(`[agent-fixer] selector ${selector} not found in ${TARGET_FILE} — skipping\n`);
+    return false;
+  }
+  if (isSkipped(lines, lineIndex)) {
+    process.stderr.write(`[agent-fixer] ${selector} is marked "${SKIP_MARKER}" — leaving it untouched\n`);
+    return false;
+  }
+  const replacementWithThis = replacementCode.startsWith('page.') ? `this.${replacementCode}` : replacementCode;
+  lines[lineIndex] = lines[lineIndex].replace(needle, replacementWithThis);
+  fs.writeFileSync(TARGET_FILE, lines.join('\n'));
+  return true;
+}
+
+async function main(): Promise<void> {
   if (currentBranch().startsWith(BRANCH_PREFIX)) {
     process.stderr.write('[agent-fixer] running on an agent-fixer branch — skipping to avoid a loop\n');
     return;
@@ -30,74 +57,50 @@ function main(): void {
   }
 
   if (!fs.existsSync(SELF_HEAL_CACHE)) {
-    process.stderr.write('[agent-fixer] recoveries found but .self-heal/healed_locators.json is missing — cannot propose a fix\n');
+    process.stderr.write(`[agent-fixer] recoveries found but ${SELF_HEAL_CACHE} is missing — cannot propose a fix\n`);
     return;
   }
-  const healedCache = fs.readFileSync(SELF_HEAL_CACHE, 'utf-8');
+  const healedCacheJson = fs.readFileSync(SELF_HEAL_CACHE, 'utf-8');
+
+  // Drop selectors marked "agent-fixer: skip" in source before even asking the model —
+  // no point spending a call proposing a fix we won't apply.
+  const sourceLines = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n');
+  const candidateSelectors = [...brokenSelectors].filter((selector) => {
+    const lineIndex = sourceLines.findIndex((l) => l.includes(`this.page.locator('${selector}')`));
+    return lineIndex !== -1 && !isSkipped(sourceLines, lineIndex);
+  });
+
+  if (candidateSelectors.length === 0) {
+    process.stderr.write('[agent-fixer] all recovered selectors are marked "agent-fixer: skip" — nothing to fix\n');
+    return;
+  }
+
+  const proposals = await proposeFixesWithGemini(candidateSelectors, healedCacheJson);
 
   const branch = `${BRANCH_PREFIX}${Date.now()}`;
   execFileSync('git', ['checkout', '-b', branch], { stdio: 'inherit' });
 
-  const prompt = [
-    'You are fixing broken UI locators in a Playwright + TypeScript test suite.',
-    '',
-    'Each of these selectors is broken in source — it no longer matches anything on the page —',
-    'but healwright (a runtime self-healing wrapper) silently recovered it during the last test',
-    'run, so the test itself stayed green:',
-    '',
-    ...[...brokenSelectors].map((s) => `- ${s}`),
-    '',
-    'Here is healwright\'s cache of the working replacement it found for each broken locator,',
-    `from ${SELF_HEAL_CACHE}:`,
-    '',
-    '```json',
-    healedCache,
-    '```',
-    '',
-    'Each cache entry\'s "context" field is exactly the contextName string passed as the second',
-    'argument to `heal.click(locator, contextName)` in src/ui/pages/practice-form.page.ts — use',
-    'that to match each broken selector (found as the first `heal.click` argument on the same',
-    'line) to its cache entry, then read the "strategy" field (or the flat type/role/name/',
-    'selector/text/value fields alongside "context") to build the replacement Playwright locator.',
-    '',
-    'IMPORTANT — before changing anything, check the two lines above and below each match for a',
-    `comment containing "${SKIP_MARKER}". If present, leave that exact heal.click call untouched`,
-    'and do not report it as fixed — it is a deliberately-broken fixture for a different demo, not',
-    'a real bug.',
-    '',
-    'For every other broken locator: replace only the first argument of its heal.click(...) call',
-    '(the broken Locator) with a Locator built from the matched working strategy — e.g.',
-    'page.getByRole(role, { name }) for a "role" strategy, page.locator(selector) for a "css"',
-    'strategy. Keep the heal.click(...) wrapper and the contextName argument unchanged. Do not',
-    'touch any locator you cannot confidently match to a cache entry. Do not change anything',
-    'outside src/ui/pages/practice-form.page.ts.',
-    '',
-    'After editing, run `npx tsc --noEmit` to confirm the change compiles, and fix any type error',
-    'your edit introduced before finishing.',
-  ].join('\n');
+  const applied: { selector: string; replacementCode: string }[] = [];
+  for (const proposal of proposals) {
+    if (!proposal.found || !proposal.replacementCode) {
+      process.stderr.write(`[agent-fixer] no confident fix for ${proposal.selector}: ${proposal.reason ?? 'unknown'}\n`);
+      continue;
+    }
+    if (applyReplacement(proposal.selector, proposal.replacementCode)) {
+      applied.push({ selector: proposal.selector, replacementCode: proposal.replacementCode });
+    }
+  }
 
-  execFileSync(
-    'claude',
-    [
-      '-p',
-      prompt,
-      '--permission-mode',
-      'acceptEdits',
-      '--allowedTools',
-      'Read,Edit,Grep,Glob,Bash(npx tsc --noEmit)',
-    ],
-    { stdio: 'inherit' },
-  );
-
-  const diff = execFileSync('git', ['status', '--porcelain']).toString();
-  if (!diff.trim()) {
-    process.stderr.write('[agent-fixer] claude made no changes — skipping commit/PR\n');
+  if (applied.length === 0) {
+    process.stderr.write('[agent-fixer] no fixes applied — nothing to commit\n');
     execFileSync('git', ['checkout', 'master'], { stdio: 'inherit' });
     execFileSync('git', ['branch', '-D', branch], { stdio: 'inherit' });
     return;
   }
 
-  execFileSync('git', ['add', 'src/ui/pages/practice-form.page.ts'], { stdio: 'inherit' });
+  execFileSync('npx', ['tsc', '--noEmit'], { stdio: 'inherit' });
+
+  execFileSync('git', ['add', TARGET_FILE], { stdio: 'inherit' });
   execFileSync(
     'git',
     [
@@ -119,8 +122,8 @@ function main(): void {
       [
         'Auto-generated by agent-fixer from `.observability/` `passed_with_recovery` records.',
         '',
-        'Broken selectors found:',
-        ...[...brokenSelectors].map((s) => `- \`${s}\``),
+        'Fixes applied:',
+        ...applied.map((f) => `- \`${f.selector}\` -> \`${f.replacementCode}\``),
         '',
         `See \`${SELF_HEAL_CACHE}\` in this branch for the exact strategy/confidence healwright used to recover each one at runtime — review the confidence before merging, a low-confidence match may be overfit to one page state.`,
       ].join('\n'),
@@ -129,4 +132,7 @@ function main(): void {
   );
 }
 
-main();
+main().catch((err) => {
+  process.stderr.write(`[agent-fixer] failed: ${err.message}\n`);
+  process.exitCode = 1;
+});
