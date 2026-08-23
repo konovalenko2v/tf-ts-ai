@@ -1,0 +1,3 @@
+{
+  "query": "query ListWithPaginationAndLimit($numPages: Int!) {productsConnection(first: $numPages) {pageInfo {hasNextPage hasPreviousPage}edges {node {id name}}aggregate {count}}}"
+}

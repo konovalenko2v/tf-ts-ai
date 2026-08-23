@@ -1,0 +1,27 @@
+{
+  "name": "tfw-ts-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-native QA automation suite: REST, GraphQL and UI test coverage (TypeScript + Playwright), with AI as part of the framework architecture",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:graphql": "playwright test --project=graphql",
+    "test:ui": "playwright test --project=ui",
+    "report": "playwright show-report",
+    "allure:generate": "allure generate allure-results --clean -o allure-report",
+    "allure:serve": "allure serve allure-results"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.10.0",
+    "allure-commandline": "^2.34.0",
+    "allure-playwright": "^3.0.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^9.2.0",
+    "dotenv": "^16.4.5",
+    "healwright": "^1.7.0"
+  }
+}

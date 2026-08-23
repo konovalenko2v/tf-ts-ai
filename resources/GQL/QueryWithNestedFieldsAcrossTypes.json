@@ -1,0 +1,3 @@
+{
+  "query": "query WithNestedFieldsAcrossTypes($id: ID!) { product(where: { id: $id }) { id name categories { name } } }"
+}

@@ -1,0 +1,3 @@
+{
+  "query": "query GetProduct($id: ID!) { product(where: { id: $id }) { id name } }"
+}

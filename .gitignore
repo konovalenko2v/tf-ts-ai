@@ -1,0 +1,10 @@
+node_modules/
+test-results/
+playwright-report/
+playwright/.cache/
+allure-results/
+allure-report/
+.env
+*.log
+.idea/
+.self-heal/
