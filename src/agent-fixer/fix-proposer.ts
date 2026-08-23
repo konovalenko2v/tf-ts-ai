@@ -40,6 +40,9 @@ export function proposeFixWithGemini(
     '',
     'After editing, run `npx tsc --noEmit` to confirm the change compiles, and fix any type error',
     'your edit introduced before finishing.',
+    '',
+    'Do not search the web or fetch any URL — everything you need is either the description above',
+    'or the screenshot file, both already provided.',
   ].join('\n');
 
   execFileSync(
@@ -50,6 +53,12 @@ export function proposeFixWithGemini(
       '--approval-mode',
       'auto_edit',
       '--skip-trust',
+      // Explicitly excludes web_search/web_fetch — this fallback should only ever read/edit local
+      // files and run tsc, never leave the machine to "research" the page. --allowed-tools is
+      // deprecated in favor of the Policy Engine, but still enforced; a policy file is overkill
+      // for this one restriction.
+      '--allowed-tools',
+      'read_file,write_file,edit,glob,grep,run_shell_command',
     ],
     { stdio: 'inherit' },
   );
