@@ -94,14 +94,19 @@ jobs:
         uses: actions/deploy-pages@v4
 
   # Proposes a fix (as a PR) when a test passed only because healwright silently recovered a
-  # broken locator at runtime. The loop guard is this trigger itself: only `push` to `master`
-  # runs this job at all, and `push: branches: [master]` above means a push to an agent-fixer/*
-  # branch (or its PR) never triggers this workflow in the first place — so a fixer PR cannot
-  # spawn another fixer run.
+  # broken locator at runtime. Gated on the test job having *run* (`always()`), not on it having
+  # *passed* — the api/graphql projects hit an unstable external service (restful-booker) often
+  # enough that gating on overall job success would mean a UI recovery never gets fixed just
+  # because an unrelated api test flaked in the same run. agent-fixer's own script exits cleanly
+  # with nothing to do when .observability/ has no passed_with_recovery records, so running it
+  # unconditionally here is safe — it just costs an extra job start on runs with nothing to fix.
+  # The loop guard is the trigger itself: only `push` to `master` runs this job at all, and
+  # `push: branches: [master]` above means a push to an agent-fixer/* branch (or its PR) never
+  # triggers this workflow in the first place — so a fixer PR cannot spawn another fixer run.
   agent-fixer:
     if: |
       always() &&
-      needs.test.result == 'success' &&
+      needs.test.result != 'skipped' &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/master'
     needs: test
