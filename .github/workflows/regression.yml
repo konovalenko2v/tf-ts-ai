@@ -61,6 +61,26 @@ jobs:
         with:
           path: 'allure-report'
 
+      # Read by the fixer job below — kept separate from the Pages artifact above since it's
+      # machine-readable input for agent-fixer, not part of the human-facing report.
+      - name: Upload observability data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observability
+          path: .observability/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload healwright cache
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-heal-cache
+          path: .self-heal/
+          retention-days: 7
+          if-no-files-found: ignore
+
   deploy:
     if: always()
     needs: test
@@ -72,3 +92,54 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # Proposes a fix (as a PR) when a test passed only because healwright silently recovered a
+  # broken locator at runtime. Runs only on pushes to master — not on PRs, and not when the
+  # triggering branch is itself an agent-fixer branch, to avoid a fixer-PR -> CI -> fixer loop.
+  agent-fixer:
+    if: |
+      always() &&
+      needs.test.result == 'success' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      !startsWith(github.head_ref, 'agent-fixer/')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.FIXER_PAT }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download observability data
+        uses: actions/download-artifact@v4
+        with:
+          name: observability
+          path: .observability/
+
+      - name: Download healwright cache
+        uses: actions/download-artifact@v4
+        with:
+          name: self-heal-cache
+          path: .self-heal/
+
+      - name: Run agent-fixer
+        run: npm run agent-fixer
+        env:
+          GH_TOKEN: ${{ secrets.FIXER_PAT }}
+          GIT_AUTHOR_NAME: agent-fixer
+          GIT_AUTHOR_EMAIL: agent-fixer@users.noreply.github.com
+          GIT_COMMITTER_NAME: agent-fixer
+          GIT_COMMITTER_EMAIL: agent-fixer@users.noreply.github.com
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

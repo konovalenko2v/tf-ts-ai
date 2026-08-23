@@ -174,6 +174,39 @@ component rather than merged into one file now.
 Purely additive: `npm test` remains the single entry point, and `allure-results`/`playwright-report` are
 unaffected in content.
 
+## Agent-Fixer
+
+`src/agent-fixer/` closes the loop the observability layer opens: it doesn't watch for red tests — a locator
+that healwright silently heals at runtime never turns a test red, so a failure-triggered fixer would rarely
+fire on the exact class of bug it exists for. Instead it reads `.observability/` for `passed_with_recovery`
+steps — a locator broke in source but was recovered live by healwright — and proposes replacing the broken
+locator with the working strategy healwright already found and cached in `.self-heal/healed_locators.json`.
+
+`npm run agent-fixer`:
+
+1. Reads the latest `.observability/run-*.jsonl` for `passed_with_recovery` steps and collects every broken
+   selector from their `recoveredErrors[]`.
+2. Creates a branch (`agent-fixer/<timestamp>`).
+3. Hands Claude Code (`claude -p`, `--permission-mode acceptEdits`, tools restricted to
+   `Read,Edit,Grep,Glob,Bash(npx tsc --noEmit)`) the broken selectors plus the raw contents of
+   `.self-heal/healed_locators.json` — the join between a broken selector and its healed replacement happens
+   inside that prompt/file read (each cache entry's `context` field is the `contextName` argument already
+   present next to the broken locator in source), not in TypeScript.
+4. Commits, pushes, and opens a PR — only if something actually changed.
+
+A `heal.click(...)` line with an `agent-fixer: skip` comment above it is left untouched and not reported —
+that's how the `#react-select-3-option-broken` healwright demo fixture (see "Self-Healing UI Locators" above)
+stays broken on purpose instead of getting "fixed" on the first run.
+
+In CI (`.github/workflows/regression.yml`), `agent-fixer` is a separate job from `test`, gated to `success`
+pushes on `master` and skipped when the triggering branch already starts with `agent-fixer/` (the loop guard —
+without it, a fixer PR that got its own CI run and produced another recovery would spawn a fixer PR of its
+own). `test` keeps its default `contents: read` permission and hands `.observability/`/`.self-heal/` to
+`agent-fixer` via `actions/upload-artifact` + `actions/download-artifact`, so only the job that actually needs
+to push and open a PR carries `contents: write`/`pull-requests: write` — and pushes with a `FIXER_PAT` secret
+rather than the default `GITHUB_TOKEN`, since PRs opened with the default token don't trigger their own CI run
+(which is also why the PAT is what makes the fixer's own PR reviewable with a real test run instead of blind).
+
 ## Reports
 
 Playwright collects its built-in HTML report and `allure-playwright` results at the same time:
