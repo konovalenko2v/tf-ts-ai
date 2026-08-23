@@ -8,3 +8,4 @@ allure-report/
 *.log
 .idea/
 .self-heal/
+.observability/

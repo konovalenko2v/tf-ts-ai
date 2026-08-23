@@ -147,6 +147,33 @@ Without `SELF_HEAL=1`, `heal.*` calls behave like their plain Playwright equival
 or extra latency in normal CI runs. Turn it on locally when a DemoQA markup change breaks a locator, to confirm
 whether an AI-healed selector recovers the flow before hand-fixing the locator in code.
 
+## AI Observability Layer
+
+Every business action across all three projects (api/graphql/ui) already goes through Playwright's
+`test.step(...)`. `src/observability/reporter.ts` is a custom Playwright `Reporter` that taps that boundary from
+the main process — no changes to any existing `clients`/`steps`/`pages` file — and writes one append-only JSONL
+file per run to `.observability/run-<runId>.jsonl` (gitignored, mirrors `.self-heal/`).
+
+Two record types, discriminated by `type`:
+
+- **`step`** — one per business-level `test.step`, or per standalone failing assertion with no `test.step`
+  ancestor. Carries `outcome: "passed" | "failed" | "passed_with_recovery"`, the extracted `target`
+  (action/selector/urlPath, parsed from the underlying Playwright API call), and a sanitized `error` (ANSI
+  stripped, message/snippet capped to ~2KB, stack trimmed to non-`node_modules` frames). `passed_with_recovery`
+  is the interesting one: a low-level step failed (e.g. a locator timed out) but its parent `test.step`
+  ultimately succeeded — a signal that's invisible in Allure/HTML today (they'd just show a green test), but is
+  exactly what a broken-then-self-healed locator (see `healwright` above) looks like.
+- **`test`** — one per test attempt, with `status`, `outcome` (`TestCase.outcome()`, so `flaky` is distinguishable
+  from `expected`), step/recovery counts, and `artifacts[]` referencing screenshot/trace/error-context paths
+  (never inlined).
+
+Join key across both: `testId` + `testTitlePath`. This does **not** ingest `.self-heal/heal_events.jsonl` —
+they're independent logs, correlated by test name, meant to be read together by a later failure-analysis
+component rather than merged into one file now.
+
+Purely additive: `npm test` remains the single entry point, and `allure-results`/`playwright-report` are
+unaffected in content.
+
 ## Reports
 
 Playwright collects its built-in HTML report and `allure-playwright` results at the same time:

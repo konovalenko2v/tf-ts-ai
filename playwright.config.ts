@@ -9,6 +9,7 @@ export default defineConfig({
         ['list'],
         ['html', {open: 'never'}],
         ['allure-playwright', {resultsDir: 'allure-results'}],
+        ['./src/observability/reporter.ts'],
     ],
     use: {
         trace: 'retain-on-failure',
