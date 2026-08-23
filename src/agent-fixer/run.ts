@@ -113,9 +113,17 @@ async function main(): Promise<void> {
 
     // Layer 2: AI fallback — only reached when the cache has no exact answer. The Gemini CLI
     // edits TARGET_FILE itself; detect whether it actually changed the broken selector's line.
+    // A CLI failure (rate limit, quota, network) must not abort the whole run — cache-layer
+    // fixes already applied for other selectors are still worth committing and opening a PR for.
     const before = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n')[candidate.lineIndex];
     const screenshotPath = findScreenshotForTest(candidate.testId);
-    proposeFixWithGemini(candidate.selector, candidate.contextName, TARGET_FILE, screenshotPath);
+    try {
+      proposeFixWithGemini(candidate.selector, candidate.contextName, TARGET_FILE, screenshotPath);
+    } catch (err) {
+      process.stderr.write(`[agent-fixer] Gemini fallback failed for ${candidate.selector}: ${(err as Error).message}\n`);
+      unresolved.push(candidate.selector);
+      continue;
+    }
     const afterLines = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n');
     const after = afterLines[candidate.lineIndex];
     if (after !== before && !after.includes(candidate.selector)) {
