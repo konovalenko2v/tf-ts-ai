@@ -1,5 +1,5 @@
 {
-  "name": "tfw-ts-ai",
+  "name": "tf-ts-ai",
   "version": "1.0.0",
   "private": true,
   "description": "AI-native QA automation suite: REST, GraphQL and UI test coverage (TypeScript + Playwright), with AI as part of the framework architecture",

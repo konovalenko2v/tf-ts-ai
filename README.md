@@ -1,4 +1,4 @@
-# tfw-ts-ai
+# tf-ts-ai
 
 TypeScript + Playwright test suite for the REST API [Restful
 Booker](https://restful-booker.herokuapp.com), the GraphQL API [Hygraph](https://hygraph.com) (Ecommerce demo
