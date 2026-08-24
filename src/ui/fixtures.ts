@@ -1,5 +1,9 @@
+import * as fs from 'fs';
 import { test as base, Page } from '@playwright/test';
 import { withHealing, HealError, HealPage, HealMethods } from 'healwright';
+import { readHealEventsRaw, renderStrategy } from '../failure-analysis/heal-events';
+
+const HEAL_EVENTS_FILE = '.self-heal/heal_events.jsonl';
 
 // withHealing() mutates and returns the same `page` object (it attaches `.heal` and marks it
 // with a global symbol) rather than creating a fresh wrapper, so healPage === page here.
@@ -65,10 +69,40 @@ function withModelFallback(page: Page, healPage: HealPage): HealPage {
   return healPage;
 }
 
+function countLines(file: string): number {
+  if (!fs.existsSync(file)) return 0;
+  return fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean).length;
+}
+
+// Standard Allure/HTML reports show a green test with no sign AI intervened at runtime — the
+// exact "healing hides regressions" gap this project's observability layer exists to close.
+// Attaching a per-test note makes that visible directly on the report someone actually browses,
+// not only in the JSONL/step-summary someone has to know to look at.
 export const test = base.extend<{ page: HealPage }>({
-  page: async ({ page }, use) => {
+  page: async ({ page }, use, testInfo) => {
     const healPage = buildHealPage(page, PRIMARY_MODEL);
+    const linesBefore = countLines(HEAL_EVENTS_FILE);
+
     await use(withModelFallback(page, healPage));
+
+    const newEvents = readHealEventsRaw(HEAL_EVENTS_FILE)
+      .slice(linesBefore)
+      .filter((e) => e.success && e.strategy);
+    for (const e of newEvents) {
+      if (!e.strategy) continue;
+      const sourceNote = e.used === 'cache' ? ' (from cache, no AI call)' : '';
+      await testInfo.attach(`self-healed: ${e.contextName}`, {
+        body: [
+          `Context: ${e.contextName}`,
+          `Healed locator: ${renderStrategy(e.strategy)}${sourceNote}`,
+          e.confidence !== undefined ? `Confidence: ${e.confidence}` : undefined,
+          e.why ? `Rationale: ${e.why}` : undefined,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        contentType: 'text/plain',
+      });
+    }
   },
 });
 export { expect } from '@playwright/test';

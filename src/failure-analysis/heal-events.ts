@@ -30,14 +30,20 @@ export interface HealEvent {
   };
 }
 
-export function readHealEvents(file: string): HealEvent[] {
+// One line per call, in file order, including failed attempts — callers that need to slice by
+// line position (e.g. "only events written since this test started") must use this, not the
+// filtered readHealEvents, or an index computed against the raw line count won't line up.
+export function readHealEventsRaw(file: string): HealEvent[] {
   if (!fs.existsSync(file)) return [];
   return fs
     .readFileSync(file, 'utf-8')
     .split('\n')
     .filter(Boolean)
-    .map((l) => JSON.parse(l) as HealEvent)
-    .filter((e) => e.success && e.strategy);
+    .map((l) => JSON.parse(l) as HealEvent);
+}
+
+export function readHealEvents(file: string): HealEvent[] {
+  return readHealEventsRaw(file).filter((e) => e.success && e.strategy);
 }
 
 export function healEventsInWindow(events: HealEvent[], startedAt: string, durationMs: number): HealEvent[] {
