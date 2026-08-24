@@ -244,6 +244,41 @@ permission and hands `.observability/`/`.self-heal/` to `agent-fixer` via `actio
 `GITHUB_TOKEN`, since PRs opened with the default token don't trigger their own CI run (which is also why the
 PAT is what makes the fixer's own PR reviewable with a real test run instead of blind).
 
+## Jira-Driven Red-Test Triage
+
+```bash
+npm run jira-triage <branch-name> <failure-area>
+```
+
+`src/jira-triage/` is the context-collection half of a red-test triage flow: when an assertion
+fails (not a broken locator — that's healwright's job), it's not always clear whether that's a
+real bug or the expected result of a feature change already described in Jira. This piece answers
+"what does Jira say about this," so a later verdict step (not built yet — see the plan file) can
+compare the failing step against it and decide bug vs. intentional change.
+
+- Parses a Jira key out of the branch name (`feat/PET-123` → `PET-123`) and fetches that one
+  ticket — summary, description, and every comment, not just the title. `agent-fixer`'s locator
+  fixes never look at Jira at all; this is for the class of failure where the test's own
+  expectation may now be wrong, not the selector.
+- If the ticket alone looks thin (a cheap check first — empty description and no comments skips
+  straight past a model call; otherwise one short Gemini call judges it), it walks up to the
+  parent Story: reads the Story's own description, then every sibling subtask's summary and
+  description (one JQL call, `parent = <key>`, not a project-wide search).
+- Comments are fetched for a sibling only when a relevance check (same short model call) says its
+  summary/description looks related to the failing area — never for every sibling
+  indiscriminately, to keep this a point lookup rather than pulling in a project's worth of Jira
+  content.
+
+Authenticates against the Jira Cloud REST API directly with an Atlassian API token (`JIRA_EMAIL`/
+`JIRA_API_TOKEN`/`JIRA_BASE_URL` in `.env`) — this runs as a headless script, not inside a chat
+session, so it can't use the OAuth-based `mcp__atlassian__*` tools a Claude Code session
+authenticates with. Create a token at
+https://id.atlassian.com/manage-profile/security/api-tokens.
+
+The verdict prompt (old step + Jira context + error log → bug/feature-change verdict), the CI job
+that runs this on a red test, and any resulting fix generation are not built yet — this module
+only collects the context they'll need.
+
 ## Reports
 
 Playwright collects its built-in HTML report and `allure-playwright` results at the same time:

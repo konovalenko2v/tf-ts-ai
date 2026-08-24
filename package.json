@@ -15,7 +15,8 @@
     "agent-fixer": "tsx src/agent-fixer/run.ts",
     "failure-analysis": "tsx src/failure-analysis/run.ts",
     "link-healed-tests": "tsx src/failure-analysis/link-healed-tests.ts",
-    "test-evolution": "tsx src/test-evolution/run.ts"
+    "test-evolution": "tsx src/test-evolution/run.ts",
+    "jira-triage": "tsx src/jira-triage/run.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",
