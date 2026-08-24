@@ -112,8 +112,13 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # PR-only skip, not a failure: the github-pages environment's branch protection rejects any
+  # deploy attempt from a PR merge ref (refs/pull/N/merge) — only push/workflow_dispatch against
+  # master are allowed to publish. Gating here explicitly avoids that rejection showing up as a
+  # red "deploy" job on every PR; the Pages artifact test already uploaded is still downloadable
+  # from the run regardless.
   deploy:
-    if: always()
+    if: always() && github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
     environment:
