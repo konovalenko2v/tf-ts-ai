@@ -109,6 +109,25 @@ The `api` and `graphql` projects run with `fullyParallel: false` — tests withi
 rather than in parallel, because both external services (the restful-booker Heroku app and the Hygraph demo CDN)
 return `429 Too Many Requests` under aggressive parallel load; the `ui` project stays fully parallel.
 
+### Affected-Test Selection
+
+```bash
+npm run test:affected
+```
+
+`src/test-selection/` builds a real TypeScript import-dependency graph from every `tests/**/*.spec.ts` file
+(resolving `tsconfig.json`'s `paths` aliases), diffs the current branch against `master` (or `origin/<base>` in
+CI), and runs only the specs whose dependency set actually contains a changed file — a change to
+`text-box.page.ts` runs only `text-box.spec.ts`, not the whole `ui` project.
+
+Anything the import graph can't reason about — `playwright.config.ts`, `tsconfig.json`, `package.json`,
+`package-lock.json`, `.github/workflows/**` — falls back to running the full suite; the tool never tries to guess
+a config change's blast radius.
+
+In CI, `pull_request` runs use `test:affected`; `push` to `master` and manual `workflow_dispatch` runs always run
+the full suite (`npm test`) — a false negative reaching `master` unnoticed is the one outcome this is not allowed
+to risk.
+
 ## Coverage Notes
 
 - There is deliberately no stub test designed to fail on its first attempt just to populate a retry tab in the
