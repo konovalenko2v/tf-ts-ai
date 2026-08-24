@@ -13,6 +13,7 @@
     "allure:serve": "allure serve allure-results",
     "agent-fixer": "tsx src/agent-fixer/run.ts",
     "failure-analysis": "tsx src/failure-analysis/run.ts",
+    "link-healed-tests": "tsx src/failure-analysis/link-healed-tests.ts",
     "test-evolution": "tsx src/test-evolution/run.ts"
   },
   "devDependencies": {
