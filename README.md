@@ -301,3 +301,4 @@ npm run report            # open the Playwright HTML report
 npm run allure:generate   # build a static Allure report from allure-results/
 npm run allure:serve      # build and immediately open the Allure report (requires the Allure CLI)
 ```
+<!-- verify deploy skip -->
