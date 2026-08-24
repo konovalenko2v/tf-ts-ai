@@ -24,10 +24,16 @@ function runGeneratedSpec(file: string): boolean {
 // The reviewer explicitly asked to never have to take "it passed" on faith — this reads the
 // observability reporter's own record of the run that just happened (not a re-derived claim)
 // so the PR body carries the actual status/duration per test.
+//
+// OUTPUT_FILE is repo-relative (tests/api/negative-generated-...), but the reporter's
+// testTitlePath is relative to the project's testDir (api/negative-generated-...) — Playwright's
+// own TestCase.titlePath() never includes the tests/<project> prefix the config's testDir strips.
+// Match on the basename instead of the full path.
 function readTestResults(): TestSummaryEvent[] {
   const runFile = latestRunFile();
   if (!runFile) return [];
-  return readEvents(runFile).filter((e): e is TestSummaryEvent => e.type === 'test' && e.testTitlePath.includes(OUTPUT_FILE));
+  const basename = OUTPUT_FILE.split('/').pop()!;
+  return readEvents(runFile).filter((e): e is TestSummaryEvent => e.type === 'test' && e.testTitlePath.includes(basename));
 }
 
 // A file path alone doesn't tell a reviewer what's being tested — pull the human-written
