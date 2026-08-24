@@ -36,11 +36,13 @@ async function main(): Promise<void> {
   execFileSync('git', ['checkout', '-b', branch], { stdio: 'inherit' });
 
   // CLI failures (quota, rate limit, network) must not leave an orphaned branch behind — same
-  // isolation agent-fixer applies around its own Gemini CLI call.
+  // isolation agent-fixer applies around its own Gemini CLI call. proposeTest() already falls
+  // back from gemini to claude internally on any failure, so reaching this catch means both CLIs
+  // failed.
   try {
     proposeTest(REFERENCE_FILE, OUTPUT_FILE);
   } catch (err) {
-    abandon(branch, `Gemini CLI failed: ${(err as Error).message}`, false);
+    abandon(branch, `AI CLI failed (gemini, then claude fallback): ${(err as Error).message}`, false);
     return;
   }
 

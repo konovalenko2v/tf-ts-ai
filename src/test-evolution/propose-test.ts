@@ -17,8 +17,8 @@ import { execFileSync } from 'child_process';
 
 const MODEL = 'gemini-3.5-flash'; // distinct from healwright's gemini-3.6-flash primary — own daily quota
 
-export function proposeTest(referenceFile: string, outputFile: string): void {
-  const prompt = [
+function buildPrompt(referenceFile: string, outputFile: string): string {
+  return [
     `Read ${referenceFile} — it's a Playwright API test spec with several edge-case tests`,
     'documenting how this REST API actually behaves for malformed/unusual input (some assert a',
     '200 where you might expect a 400 — that is the real, observed behavior, not a bug to fix).',
@@ -36,7 +36,9 @@ export function proposeTest(referenceFile: string, outputFile: string): void {
     'Do not modify the reference file. Do not run the test yourself — another step does that.',
     'Do not search the web or fetch any URL.',
   ].join('\n');
+}
 
+function proposeTestWithGemini(prompt: string): void {
   execFileSync(
     'gemini',
     [
@@ -52,4 +54,31 @@ export function proposeTest(referenceFile: string, outputFile: string): void {
     ],
     { stdio: 'inherit' },
   );
+}
+
+// Fallback path — reached whenever the Gemini CLI call fails for any reason (quota exhaustion is
+// what's actually been hit in practice, but stdio: 'inherit' means the live output goes straight
+// to the terminal rather than a buffer this process can pattern-match, so any nonzero exit is
+// treated the same way rather than trying to distinguish quota from a transient CLI error).
+// Authenticates via the user's existing Claude Code subscription session, not an API key — no
+// ANTHROPIC_API_KEY needed (confirmed: `claude -p` works with none set in this project's env).
+function proposeTestWithClaude(prompt: string): void {
+  execFileSync(
+    'claude',
+    ['-p', prompt, '--permission-mode', 'acceptEdits', '--allowedTools', 'Read,Write,Edit,Glob,Grep'],
+    { stdio: 'inherit' },
+  );
+}
+
+export function proposeTest(referenceFile: string, outputFile: string): void {
+  const prompt = buildPrompt(referenceFile, outputFile);
+
+  try {
+    proposeTestWithGemini(prompt);
+  } catch (err) {
+    process.stderr.write(
+      `[test-evolution] gemini CLI failed (${(err as Error).message.split('\n')[0]}) — retrying with claude CLI\n`,
+    );
+    proposeTestWithClaude(prompt);
+  }
 }
