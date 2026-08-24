@@ -6,6 +6,7 @@ import { groupFailures, summarizeRecoveries, FailureCategory } from './classify'
 import { readHealEvents } from './heal-events';
 
 const HEAL_EVENTS_FILE = '.self-heal/heal_events.jsonl';
+const ALLURE_RESULTS_DIR = 'allure-results';
 
 const CATEGORY_LABELS: Record<FailureCategory, string> = {
   config: 'Configuration (missing/invalid env var)',
@@ -70,6 +71,23 @@ function renderReport(runFile: string, groups: ReturnType<typeof groupFailures>,
   return lines.join('\n') + '\n';
 }
 
+// allure-results/environment.properties renders on the report's Overview page — the one thing
+// everyone opening the report sees before choosing to drill into any suite. This is the landing-
+// page-visible half of the healing-visibility gap; the tag on individual tests (src/ui/fixtures.ts)
+// is the filterable half. Must be written before `allure generate` (the Generate Allure Report
+// step runs right after this one). `allure generate --clean` only wipes allure-report/, not
+// allure-results/, so writing here doesn't race that step — but if npm test failed early enough
+// that allure-results/ was never created, mkdirSync guards against this step throwing on top of it.
+function writeAllureEnvironment(recoveries: ReturnType<typeof summarizeRecoveries>): void {
+  const healedCount = recoveries.reduce((sum, r) => sum + r.healedLocators.length, 0);
+  if (healedCount === 0) return;
+
+  fs.mkdirSync(ALLURE_RESULTS_DIR, { recursive: true });
+  const contexts = recoveries.flatMap((r) => r.healedLocators.map((h) => h.contextName)).join('; ');
+  const lines = [`Self-healed-locators=${healedCount} (${contexts})`];
+  fs.writeFileSync(path.join(ALLURE_RESULTS_DIR, 'environment.properties'), lines.join('\n') + '\n');
+}
+
 function main(): void {
   const runFile = process.argv[2] ?? latestRunFile();
   if (!runFile) {
@@ -85,6 +103,7 @@ function main(): void {
   const groups = groupFailures(tests);
   const recoveries = summarizeRecoveries(steps, healEvents);
   const report = renderReport(runFile, groups, recoveries);
+  writeAllureEnvironment(recoveries);
 
   const outPath = path.join(path.dirname(runFile), `failure-analysis-${path.basename(runFile, '.jsonl')}.md`);
   fs.writeFileSync(outPath, report);

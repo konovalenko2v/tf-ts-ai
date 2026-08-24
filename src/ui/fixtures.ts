@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import { test as base, Page } from '@playwright/test';
 import { withHealing, HealError, HealPage, HealMethods } from 'healwright';
+import { tag } from 'allure-js-commons';
 import { readHealEventsRaw, renderStrategy } from '../failure-analysis/heal-events';
 
 const HEAL_EVENTS_FILE = '.self-heal/heal_events.jsonl';
@@ -88,6 +89,11 @@ export const test = base.extend<{ page: HealPage }>({
     const newEvents = readHealEventsRaw(HEAL_EVENTS_FILE)
       .slice(linesBefore)
       .filter((e) => e.success && e.strategy);
+
+    // Filterable and visible in the suite list without opening the test — the attachment alone
+    // is buried 4 levels deep in the step tree and nobody browsing a green report finds it.
+    if (newEvents.length > 0) await tag('self-healed');
+
     for (const e of newEvents) {
       if (!e.strategy) continue;
       const sourceNote = e.used === 'cache' ? ' (from cache, no AI call)' : '';
