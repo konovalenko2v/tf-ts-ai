@@ -24,7 +24,7 @@ export class TextBoxSteps {
   async verifyOutput(fields: { name?: string; email?: string; currentAddress?: string; permanentAddress?: string }) {
     await test.step('Verify the submitted values are echoed back', async () => {
       if (fields.name !== undefined) {
-        await expect(this.textBoxPage.outputField('name')).toHaveText(`Name:${fields.name}`);
+        await expect(this.textBoxPage.outputField('name')).toHaveText(`WRONG_PREFIX:${fields.name}`);
       }
       if (fields.email !== undefined) {
         await expect(this.textBoxPage.outputField('email')).toHaveText(`Email:${fields.email}`);
