@@ -78,8 +78,20 @@ derivable from the tree UI itself:
   checking "Home" alone populates `#result` with all 17 node ids).
 - Unchecking the only currently-selected item removes `#result` from the DOM entirely — it does
   not become an empty wrapper.
+- Indeterminate state cascades through **every** ancestor level, not just the direct parent —
+  checking a leaf deep in the tree (e.g. "React" under Documents > WorkSpace) marks both
+  WorkSpace *and* Documents indeterminate simultaneously.
+- Unchecking a fully-checked parent deselects its entire subtree in one click, symmetric to how
+  checking it selects the whole subtree.
+- Two independently-selected subtrees don't interfere with each other's state — selecting
+  Desktop's contents and a Downloads file at the same time keeps each subtree's checked/
+  indeterminate state scoped to itself.
+- Collapsing a node (clicking its switcher, not its checkbox) does not clear any checked state
+  underneath it — re-expanding shows the same children still checked. Expand/collapse and
+  checked/unchecked are fully independent axes of state.
 
 ## Source of truth
 
 `src/ui/pages/check-box.page.ts`, `src/ui/steps/check-box.steps.ts`, `tests/ui/check-box.spec.ts`
-(PET-3). Confirmed against the live site via direct DOM inspection, not inferred from screenshots.
+(PET-3, PET-4). Confirmed against the live site via direct DOM inspection, not inferred from
+screenshots.

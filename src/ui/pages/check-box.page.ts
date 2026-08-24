@@ -37,6 +37,17 @@ export class CheckBoxPage {
     await this.treeNode(label).locator('.rc-tree-checkbox').first().click();
   }
 
+  // Clicking the switcher toggles between the two states unconditionally — collapse()/expand()
+  // are separate calls (rather than one toggleExpand()) so a test can assert intent without
+  // depending on knowing the node's current expand state going in.
+  async collapse(label: string) {
+    await this.treeNode(label).locator('.rc-tree-switcher_open').first().click();
+  }
+
+  async expand(label: string) {
+    await this.treeNode(label).locator('.rc-tree-switcher_close').first().click();
+  }
+
   checkboxState(label: string): Locator {
     return this.treeNode(label).locator('.rc-tree-checkbox').first();
   }

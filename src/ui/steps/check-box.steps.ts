@@ -21,6 +21,14 @@ export class CheckBoxSteps {
     await test.step(`Toggle the "${label}" checkbox`, async () => this.checkBoxPage.toggleCheckbox(label));
   }
 
+  async collapse(label: string) {
+    await test.step(`Collapse the "${label}" node`, async () => this.checkBoxPage.collapse(label));
+  }
+
+  async expand(label: string) {
+    await test.step(`Expand the "${label}" node`, async () => this.checkBoxPage.expand(label));
+  }
+
   async verifySelected(ids: string[]) {
     await test.step(`Verify selected items: ${ids.join(', ')}`, async () => {
       for (const id of ids) {
@@ -45,6 +53,14 @@ export class CheckBoxSteps {
   async verifyNoSelection() {
     await test.step('Verify no result block is rendered when nothing is selected', async () => {
       await expect(this.checkBoxPage.result).toHaveCount(0);
+    });
+  }
+
+  async verifyNotSelected(ids: string[]) {
+    await test.step(`Verify not selected: ${ids.join(', ')}`, async () => {
+      for (const id of ids) {
+        await expect(this.checkBoxPage.selectedItem(id)).toHaveCount(0);
+      }
     });
   }
 }

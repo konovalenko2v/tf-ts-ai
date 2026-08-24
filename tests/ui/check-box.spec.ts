@@ -60,4 +60,51 @@ test.describe('DemoQA UI @ Check Box', () => {
     await steps.toggle('Notes');
     await steps.verifyNoSelection();
   });
+
+  test('Checking a deeply nested node cascades a partial state up through every ancestor level', async ({ page }) => {
+    const steps = new CheckBoxSteps(page);
+
+    await steps.openCheckBoxPage();
+    await steps.expandTree();
+    await steps.toggle('React');
+    await steps.verifySelected(['react']);
+    await steps.verifyParentIndeterminate('WorkSpace');
+    await steps.verifyParentIndeterminate('Documents');
+  });
+
+  test('Checking two independent subtrees selects both without interfering with each other', async ({ page }) => {
+    const steps = new CheckBoxSteps(page);
+
+    await steps.openCheckBoxPage();
+    await steps.expandTree();
+    await steps.toggle('Desktop');
+    await steps.toggle('Word File.doc');
+    await steps.verifySelected(['desktop', 'notes', 'commands', 'wordFile']);
+    await steps.verifyParentFullyChecked('Desktop');
+    await steps.verifyNotSelected(['excelFile', 'downloads', 'documents']);
+  });
+
+  test('Unchecking a fully checked parent deselects its entire subtree at once', async ({ page }) => {
+    const steps = new CheckBoxSteps(page);
+
+    await steps.openCheckBoxPage();
+    await steps.expandTree();
+    await steps.toggle('Desktop');
+    await steps.verifySelected(['desktop', 'notes', 'commands']);
+    await steps.toggle('Desktop');
+    await steps.verifyNoSelection();
+  });
+
+  test('Collapsing and re-expanding a node does not clear its checked children', async ({ page }) => {
+    const steps = new CheckBoxSteps(page);
+
+    await steps.openCheckBoxPage();
+    await steps.expandTree();
+    await steps.toggle('Notes');
+    await steps.verifySelected(['notes']);
+
+    await steps.collapse('Desktop');
+    await steps.expand('Desktop');
+    await steps.verifySelected(['notes']);
+  });
 });
