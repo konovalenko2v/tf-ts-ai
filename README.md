@@ -291,6 +291,29 @@ the goal is an early signal for the PR author, not a merge gate.
 instead of patching the old step, searching for a new path toward the goal the ticket describes.
 Still unbuilt and out of scope for this module, which only produces and reports the verdict.
 
+## Page Knowledge Cache
+
+`docs/page-knowledge/` holds one markdown file per DemoQA page under test (e.g. `text-box.md`,
+`check-box.md`) — locators, id/label mismatches, and non-obvious behavior discovered the first
+time that page was explored in a browser to write its tests. Committed to the repo, not
+gitignored: this documents facts about the site's structure, not per-machine ephemeral state like
+`.self-heal/` or `.observability/`.
+
+The workflow this exists for:
+
+1. Before opening a browser to explore a new page for a ticket, check whether
+   `docs/page-knowledge/<page>.md` already exists — read it first.
+2. If the file already answers what's needed (locators + behavior for the scenario at hand), write
+   the page object/test directly from it — no browser tool calls spent re-discovering it.
+3. For anything the file doesn't cover (a locator not listed, a behavior not documented), open the
+   browser only for that gap, not to re-verify what's already written down.
+4. After a ticket that learned anything new about the page, update (or create) that page's file as
+   part of the same commit as the test code.
+
+No staleness tracking — the file is trusted fully; a browser check only happens on a genuine
+cache miss, never on a schedule. If the live site changes underneath a documented locator, the
+resulting test failure is the signal to go re-verify and update the file, not a background check.
+
 ## Reports
 
 Playwright collects its built-in HTML report and `allure-playwright` results at the same time:
