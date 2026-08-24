@@ -3,6 +3,9 @@ import * as path from 'path';
 import { StepEvent, TestSummaryEvent } from '../observability/types';
 import { latestRunFile, readEvents } from '../observability/run-file';
 import { groupFailures, summarizeRecoveries, FailureCategory } from './classify';
+import { readHealEvents } from './heal-events';
+
+const HEAL_EVENTS_FILE = '.self-heal/heal_events.jsonl';
 
 const CATEGORY_LABELS: Record<FailureCategory, string> = {
   config: 'Configuration (missing/invalid env var)',
@@ -48,7 +51,19 @@ function renderReport(runFile: string, groups: ReturnType<typeof groupFailures>,
     lines.push('## Passed only via AI healing', '');
     lines.push('These tests passed, but only because a broken locator was healed at runtime — see agent-fixer for automated fixes.', '');
     for (const r of recoveries) {
-      lines.push(`- ${r.testTitlePath.trim()} — ${r.stepTitle} (${r.recoveredSelectors.join(', ')})`);
+      lines.push(`- ${r.testTitlePath.trim()} — ${r.stepTitle}`);
+      if (r.healedLocators.length > 0) {
+        for (const h of r.healedLocators) {
+          const confidenceNote = h.confidence !== undefined ? ` — confidence ${h.confidence}` : '';
+          const sourceNote = h.used === 'cache' ? ' (from healwright cache, no AI call this run)' : '';
+          lines.push(`  - "${h.contextName}" → \`${h.newLocator}\`${confidenceNote}${sourceNote}`);
+          if (h.why) lines.push(`    ${h.why}`);
+        }
+      } else if (r.recoveredSelectors.length > 0) {
+        // No matching heal_events.jsonl entry (e.g. the file wasn't available) — fall back to
+        // reporting only what broke, not what it was replaced with.
+        lines.push(`  - broken selector(s): ${r.recoveredSelectors.join(', ')}`);
+      }
     }
   }
 
@@ -66,8 +81,9 @@ function main(): void {
   const tests = events.filter((e): e is TestSummaryEvent => e.type === 'test');
   const steps = events.filter((e): e is StepEvent => e.type === 'step');
 
+  const healEvents = readHealEvents(HEAL_EVENTS_FILE);
   const groups = groupFailures(tests);
-  const recoveries = summarizeRecoveries(steps);
+  const recoveries = summarizeRecoveries(steps, healEvents);
   const report = renderReport(runFile, groups, recoveries);
 
   const outPath = path.join(path.dirname(runFile), `failure-analysis-${path.basename(runFile, '.jsonl')}.md`);

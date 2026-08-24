@@ -1,4 +1,5 @@
 import { StepEvent, TestSummaryEvent } from '../observability/types';
+import { HealEvent, healEventsInWindow, renderStrategy } from './heal-events';
 
 export type FailureCategory = 'config' | 'ai-quota' | 'ai-healing' | 'assertion' | 'other';
 
@@ -96,20 +97,44 @@ export function groupFailures(tests: TestSummaryEvent[]): FailureGroup[] {
   return [...groups.values()].sort((a, b) => b.count - a.count);
 }
 
+export interface HealedLocator {
+  contextName: string;
+  newLocator: string;
+  confidence?: number;
+  why?: string;
+  used: 'healed' | 'cache';
+}
+
 export interface RecoverySummary {
   testTitlePath: string;
   stepTitle: string;
   recoveredSelectors: string[];
+  healedLocators: HealedLocator[];
 }
 
 // Same latent-brittleness signal agent-fixer consumes, surfaced here for a human-readable report
-// instead of an automated code fix.
-export function summarizeRecoveries(steps: StepEvent[]): RecoverySummary[] {
+// instead of an automated code fix. heal_events.jsonl carries the replacement locator and the
+// AI's own confidence/rationale — neither is in the observability step event, which only records
+// the selector(s) that *failed* — so this joins the two by matching each heal event's timestamp
+// against the step's [startedAt, startedAt+durationMs) window (the file has no run id to key on).
+export function summarizeRecoveries(steps: StepEvent[], healEvents: HealEvent[] = []): RecoverySummary[] {
   return steps
     .filter((s) => s.outcome === 'passed_with_recovery')
-    .map((s) => ({
-      testTitlePath: s.testTitlePath,
-      stepTitle: s.stepTitle,
-      recoveredSelectors: [...new Set((s.recoveredErrors ?? []).map((e) => e.selector).filter((s): s is string => !!s))],
-    }));
+    .map((s) => {
+      // readHealEvents already filters to success && strategy present, but TS can't see that
+      // across the module boundary — narrow again here rather than widening HealEvent's type.
+      const inWindow = healEventsInWindow(healEvents, s.startedAt, s.durationMs).filter((e) => e.strategy);
+      return {
+        testTitlePath: s.testTitlePath,
+        stepTitle: s.stepTitle,
+        recoveredSelectors: [...new Set((s.recoveredErrors ?? []).map((e) => e.selector).filter((s): s is string => !!s))],
+        healedLocators: inWindow.map((e) => ({
+          contextName: e.contextName,
+          newLocator: renderStrategy(e.strategy!),
+          confidence: e.confidence,
+          why: e.why,
+          used: e.used,
+        })),
+      };
+    });
 }
