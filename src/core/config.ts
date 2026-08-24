@@ -5,6 +5,7 @@ dotenv.config();
 export const config = {
   host: 'https://restful-booker.herokuapp.com',
   uiHost: 'https://demoqa.com/automation-practice-form',
+  textBoxHost: 'https://demoqa.com/text-box',
   gqlHost: 'https://eu-central-1-shared-euc1-02.cdn.hygraph.com/content/clv6lwqu7000001w690st4vix/master',
 };
 
