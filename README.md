@@ -247,37 +247,49 @@ PAT is what makes the fixer's own PR reviewable with a real test run instead of 
 ## Jira-Driven Red-Test Triage
 
 ```bash
-npm run jira-triage <branch-name> <failure-area>
+npm run jira-triage [observability-run-file]   # defaults to the latest .observability/run-*.jsonl
 ```
 
-`src/jira-triage/` is the context-collection half of a red-test triage flow: when an assertion
-fails (not a broken locator — that's healwright's job), it's not always clear whether that's a
-real bug or the expected result of a feature change already described in Jira. This piece answers
-"what does Jira say about this," so a later verdict step (not built yet — see the plan file) can
-compare the failing step against it and decide bug vs. intentional change.
+When an assertion fails (not a broken locator — that's healwright's job), it's not always clear
+whether that's a real bug or the expected result of a feature change already described in Jira.
+`src/jira-triage/` reads the latest observability run, finds every `assertion`-category failure
+(via `failure-analysis`'s own categorization — see "AI Observability Layer" above), and for each
+one:
 
-- Parses a Jira key out of the branch name (`feat/PET-123` → `PET-123`) and fetches that one
-  ticket — summary, description, and every comment, not just the title. `agent-fixer`'s locator
-  fixes never look at Jira at all; this is for the class of failure where the test's own
-  expectation may now be wrong, not the selector.
+- Parses a Jira key out of the current branch name (`feat/PET-123` → `PET-123`, `GITHUB_HEAD_REF`
+  in CI) and fetches that one ticket — summary, description, and every comment, not just the
+  title. `agent-fixer`'s locator fixes never look at Jira at all; this is for the class of failure
+  where the test's own expectation may now be wrong, not the selector.
 - If the ticket alone looks thin (a cheap check first — empty description and no comments skips
-  straight past a model call; otherwise one short Gemini call judges it), it walks up to the
-  parent Story: reads the Story's own description, then every sibling subtask's summary and
-  description (one JQL call, `parent = <key>`, not a project-wide search).
-- Comments are fetched for a sibling only when a relevance check (same short model call) says its
+  straight past a model call; otherwise one short Gemini call judges it), walks up to the parent
+  Story: reads the Story's own description, then every sibling subtask's summary and description
+  (one JQL call, `parent = <key>`, not a project-wide search).
+- Fetches a sibling's comments only when a relevance check (same short model call) says its
   summary/description looks related to the failing area — never for every sibling
   indiscriminately, to keep this a point lookup rather than pulling in a project's worth of Jira
   content.
+- Combines the failing step's title + error message with the collected Jira context into one more
+  model call (`src/jira-triage/verdict.ts`) that returns a YES/NO verdict plus a stated reason:
+  YES if the Jira context describes a change that explains this specific failure (the test is
+  testing outdated behavior), NO if nothing here explains it (most likely a real bug). No ticket
+  found for the branch → the test just stays red, no verdict attempted.
+
+Writes a per-test verdict + reason to `GITHUB_STEP_SUMMARY` and stdout. Verified live against the
+real PET project: an intentionally broken assertion on a `feat/PET-2` branch correctly came back
+NO — PET-2 only describes adding test coverage, nothing in it explains a changed output format.
 
 Authenticates against the Jira Cloud REST API directly with an Atlassian API token (`JIRA_EMAIL`/
-`JIRA_API_TOKEN`/`JIRA_BASE_URL` in `.env`) — this runs as a headless script, not inside a chat
-session, so it can't use the OAuth-based `mcp__atlassian__*` tools a Claude Code session
-authenticates with. Create a token at
-https://id.atlassian.com/manage-profile/security/api-tokens.
+`JIRA_API_TOKEN`/`JIRA_BASE_URL`) — this runs as a headless script, not inside a chat session, so
+it can't use the OAuth-based `mcp__atlassian__*` tools a Claude Code session authenticates with.
+Create a token at https://id.atlassian.com/manage-profile/security/api-tokens.
 
-The verdict prompt (old step + Jira context + error log → bug/feature-change verdict), the CI job
-that runs this on a red test, and any resulting fix generation are not built yet — this module
-only collects the context they'll need.
+In CI, `jira-triage` is a separate job from `test`, gated to `pull_request` events only — parsing
+a Jira key out of the branch name is meaningless on `master` itself (no ticket in that name), and
+the goal is an early signal for the PR author, not a merge gate.
+
+**Does not act on a YES verdict yet** — no fix generation, no PR. That's Intent-Based Testing:
+instead of patching the old step, searching for a new path toward the goal the ticket describes.
+Still unbuilt and out of scope for this module, which only produces and reports the verdict.
 
 ## Reports
 

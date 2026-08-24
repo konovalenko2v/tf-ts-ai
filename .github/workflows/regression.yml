@@ -124,6 +124,53 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v5
 
+  # Collects Jira context for every assertion-category failure and asks for a bug-vs-feature-change
+  # verdict, per src/jira-triage/. PR-only: the branch-name-to-Jira-key parse
+  # (src/jira-triage/collect-context.ts) is meaningless on `master` itself (no ticket key in that
+  # name), and this is meant to give a PR author an early "is this red because of the thing you're
+  # changing" signal, not to gate merges. Gated on the test job having *run* (`always()`), same
+  # reasoning as agent-fixer below — an unrelated api flake in the same PR run shouldn't block
+  # triaging a real ui assertion failure.
+  jira-triage:
+    if: |
+      always() &&
+      needs.test.result != 'skipped' &&
+      github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # continue-on-error: mirrors agent-fixer's reasoning below — a run where the test job
+      # failed before ever writing .observability/ (or produced none, e.g. every failure was a
+      # non-assertion category) legitimately has no artifact; run.ts already exits cleanly with
+      # "nothing to triage" when latestRunFile() finds no run file.
+      - name: Download observability data
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: observability
+          path: .observability/
+
+      - name: Run Jira triage
+        run: npm run jira-triage
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: 'gemini-3.6-flash'
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+
   # Proposes a fix (as a PR) when a test passed only because healwright silently recovered a
   # broken locator at runtime. Gated on the test job having *run* (`always()`), not on it having
   # *passed* — the api/graphql projects hit an unstable external service (restful-booker) often
