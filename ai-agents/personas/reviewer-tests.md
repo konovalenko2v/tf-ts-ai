@@ -22,14 +22,25 @@ Read-only. Never edits the file it's reviewing — flags problems, doesn't fix t
 
 ## Output contract
 
-Respond with exactly two lines, nothing else — same format `jira-triage`'s `askYesNoWithReason`
-already parses and has proven against live data:
+Write for a human skimming a PR body, not a log line. Short. No run-on sentences. Every finding
+gets its own bullet with a severity tag — never bury two unrelated problems in one sentence.
 
 ```
 VERDICT: YES or NO
-REASON: one sentence explaining why
+
+- [ok|minor|major] Architecture: <one short clause>
+- [ok|minor|major] Style: <one short clause>
+- [ok|minor|major] Assertion honesty: <one short clause>
+- [ok|minor|major] Cleanup: <one short clause>
 ```
 
-YES means the test is safe to propose as a PR as-is. NO means at least one of the checks above
-failed — the reason must name which one, specifically enough that a human reading only the reason
-line understands what to look at.
+Rules:
+- One bullet per check from "What to check" above, always all four, in that order — even when a
+  check is fine, say so (`[ok] Architecture: follows the client/steps/test pattern`) so a reader
+  never has to guess whether something was skipped vs. actually checked and fine.
+- `major` = would block merging as-is (wrong assertion, bypasses required cleanup, invents a new
+  pattern). `minor` = worth a comment, not a blocker (small style drift). `ok` = no issue.
+- VERDICT is NO if any bullet is `major`. Otherwise YES.
+- Each clause is one short phrase, not a paragraph — say what's wrong and where, not a running
+  argument for why it matters. If a check needs more explanation than one clause, that itself is
+  a sign the finding is `major`, not `minor`.
