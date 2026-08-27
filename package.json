@@ -16,6 +16,7 @@
     "failure-analysis": "tsx src/failure-analysis/run.ts",
     "link-healed-tests": "tsx src/failure-analysis/link-healed-tests.ts",
     "test-evolution": "tsx src/test-evolution/run.ts",
+    "goal-evolution": "tsx src/goal-evolution/run.ts",
     "jira-triage": "tsx src/jira-triage/run.ts",
     "qa-analyst": "tsx src/ai-agents/qa-analyst.ts"
   },

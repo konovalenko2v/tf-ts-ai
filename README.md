@@ -19,11 +19,12 @@ self-repair, test selection, and triage.
 | 5 | [Affected-Test Selection](#5-affected-test-selection) | 🟢 100% | Runs only the specs a change can actually affect, via a real TS import graph | Faster PR feedback — a one-file change doesn't have to wait for the entire suite to run before you know if it broke something |
 | 6 | [Jira-Driven Red-Test Triage](#6-jira-driven-red-test-triage) | 🟡 ~60% | Reads Jira context for a failing assertion, verdicts bug vs. intentional change | **Triage** = sorting failures by what actually needs attention. A red test isn't automatically a bug — it might just be asserting old, now-intentionally-changed behavior. This tells you which, using the ticket that likely caused it, instead of a human having to go look it up |
 | 7 | [Self-Evolving Test Suite](#7-self-evolving-test-suite) | 🟡 ~70% | AI proposes a new edge-case test, only opens a PR if it demonstrably passes | Grows coverage without waiting for a human to think up every edge case — but only ever proposes a test it already proved passes, never an unverified guess |
-| 8 | [Page Knowledge Cache](#8-page-knowledge-cache) | 🟢 100% | Committed per-page DOM/behavior notes — skip re-exploring a page already documented | Saves real time/tokens — writing a test for a page already explored once doesn't require opening a browser and re-discovering its structure from scratch |
-| 9 | [AI Agent Personas](#9-ai-agent-personas) | 🟡 ~80% | Standardized personas (test-developer, locator-medic, reviewer-tests, qa-analyst) with a 3-tier CLI fallback and a separate review-tier model | One place to read/edit what each AI role is instructed to do, instead of an inline prompt string buried in each module — and a second, differently-modeled review gate before a generated test ships |
-| 10 | [Smart Retry / Prioritization](#not-yet-built) | ⚪ 0% | Not built — today only a printed verdict, no dynamic retry-budget control | Would let CI stop wasting retries on failures that can never pass on retry (e.g. a missing env var) and spend them only where retrying can actually help |
-| 11 | Intent-Based Testing + Draft PR on a jira-triage YES verdict | ⚪ 0% | Not built — jira-triage stops at the verdict, no fix generation | Would close the loop #6 opens: once triage confirms "this test is just outdated," automatically propose the updated test instead of leaving a human to rewrite it |
-| 12 | Healwright → Claude third AI tier | ⚪ 0% | Deliberately not built — needs a paid `ANTHROPIC_API_KEY`, not available | Would add a second fallback model for runtime healing (today it's Gemini→Gemini only) so a locator fails to heal only if two providers both can't find it |
+| 8 | [Goal-Based Tests](#8-goal-based-tests) | 🟡 demo | Agent resolves a plain-English goal into a driver, from page-knowledge alone, judged by a fixed human-written oracle it never sees | Proves the framework's pieces (page-knowledge, personas, CLI fallback) compose into "describe intent, not steps" — deliberately one demo goal, not a general capability yet |
+| 9 | [Page Knowledge Cache](#9-page-knowledge-cache) | 🟢 100% | Committed per-page DOM/behavior notes — skip re-exploring a page already documented | Saves real time/tokens — writing a test for a page already explored once doesn't require opening a browser and re-discovering its structure from scratch |
+| 10 | [AI Agent Personas](#10-ai-agent-personas) | 🟡 ~80% | Standardized personas (test-developer, locator-medic, reviewer-tests, qa-analyst, goal-solver) with a 4-tier CLI fallback (Claude + 3 Gemini models, optionally on separate API keys) and a separate review-tier model | One place to read/edit what each AI role is instructed to do, instead of an inline prompt string buried in each module — and a second, differently-modeled review gate before a generated test ships |
+| 11 | [Smart Retry / Prioritization](#not-yet-built) | ⚪ 0% | Not built — today only a printed verdict, no dynamic retry-budget control | Would let CI stop wasting retries on failures that can never pass on retry (e.g. a missing env var) and spend them only where retrying can actually help |
+| 12 | Intent-Based Testing + Draft PR on a jira-triage YES verdict | ⚪ 0% | Not built — jira-triage stops at the verdict, no fix generation | Would close the loop #6 opens: once triage confirms "this test is just outdated," automatically propose the updated test instead of leaving a human to rewrite it |
+| 13 | Healwright → Claude third AI tier | ⚪ 0% | Deliberately not built — needs a paid `ANTHROPIC_API_KEY`, not available | Would add a second fallback model for runtime healing (today it's Gemini→Gemini only) so a locator fails to heal only if two providers both can't find it |
 
 🟢 built and wired into CI · 🟡 built, partially wired or with a known gap · ⚪ not built yet
 
@@ -90,16 +91,17 @@ src/
 ├── test-selection/         TS import-dependency graph → affected specs (#5)
 ├── jira-triage/            Jira context collection + bug/feature verdict (#6)
 ├── test-evolution/         AI-generated edge-case test, runs it, proposes a PR only if it passes (#7)
-└── ai-agents/              shared CLI fallback, Gemini text/verdict helper, reviewer-tests, qa-analyst (#9)
+├── goal-evolution/         goal-in-plain-English → agent-written driver, judged by a fixed oracle (#8)
+└── ai-agents/              shared CLI fallback, Gemini text/verdict helper, reviewer-tests, qa-analyst (#10)
 tests/
-├── api/                  auth.spec.ts, booking-crud.spec.ts, negative.spec.ts (+ test-evolution output)
+├── api/                  auth.spec.ts, booking-crud.spec.ts, negative.spec.ts, book-store-goal.spec.ts (+ test-evolution output)
 ├── graphql/               positive.spec.ts, negative.spec.ts
-└── ui/                    forum.spec.ts, text-box.spec.ts, check-box.spec.ts
+└── ui/                    forum.spec.ts, text-box.spec.ts, check-box.spec.ts, buttons-goal.spec.ts
 docs/
-└── page-knowledge/       one markdown file per DemoQA page under test (#8)
+└── page-knowledge/       one markdown file per DemoQA page under test (#9)
 ai-agents/
-├── personas/             system prompt per AI role — qa-analyst, test-developer, locator-medic, reviewer-tests (#9)
-└── profiles/              cheap.env (Claude Sonnet 5 primary, Gemini reserve) / paranoid.env (review tier) (#9)
+├── personas/             system prompt per AI role — qa-analyst, test-developer, locator-medic, reviewer-tests, goal-solver (#10)
+└── profiles/              cheap.env (Claude Sonnet 5 primary, Gemini reserve) / paranoid.env (review tier) (#10)
 resources/
 ├── GQL/                  test GraphQL queries (*.json)
 └── files/                 upload-test.txt for the UI test
@@ -221,9 +223,9 @@ Two layers, in this order:
 
 1. **Deterministic cache lookup** (no AI call) — an exact match against the healwright cache means the fix is a
    fixed template per locator type, not a decision an LLM needs to make.
-2. **AI fallback** (the `locator-medic` persona, see [AI Agent Personas](#9-ai-agent-personas)), only when a
+2. **AI fallback** (the `locator-medic` persona, see [AI Agent Personas](#10-ai-agent-personas)), only when a
    selector has no exact cache match — reads the page object file, edits the broken locator's line, and re-runs
-   `npx tsc --noEmit` to confirm it compiles. Runs the shared 3-tier CLI fallback (Claude → Gemini → Gemini).
+   `npx tsc --noEmit` to confirm it compiles. Runs the shared CLI fallback (Claude → up to 3 Gemini tiers).
 
 Then: creates a branch, commits, pushes, and opens a PR — only if at least one fix was actually applied. In CI
 this runs as a separate job gated to successful pushes on `master`; the workflow's own `push`-only trigger means a
@@ -302,14 +304,14 @@ npm run test-evolution
 ```
 
 `src/test-evolution/` asks an AI (the `test-developer` persona, see
-[AI Agent Personas](#9-ai-agent-personas)) to propose one new edge-case API test from an existing reference spec,
+[AI Agent Personas](#10-ai-agent-personas)) to propose one new edge-case API test from an existing reference spec,
 actually runs the generated test, and only commits + opens a **Draft** PR if it demonstrably passes — a generated
 test that fails is discarded, never proposed. The PR body includes the real test titles (parsed from the generated
 file, not re-summarized), a results table read from the observability log, and a `reviewer-tests` verdict.
 
-Generation runs the shared 3-tier CLI fallback: Claude CLI (Sonnet 5, `--effort medium`) primary → Gemini primary →
-Gemini fallback model, only falling through to Gemini if Claude itself fails. Claude authenticates through the
-existing Claude Code subscription session — no separate paid API key needed.
+Generation runs the shared CLI fallback: Claude CLI (Sonnet 5, `--effort medium`) primary → up to three Gemini
+tiers, only falling through to Gemini if Claude itself fails. Claude authenticates through the existing Claude
+Code subscription session — no separate paid API key needed.
 
 > [!NOTE]
 > The Claude CLI tier (`claude -p ...`) is unrelated to healwright's own AI calls. Healwright's `AnthropicProvider`
@@ -321,7 +323,66 @@ existing Claude Code subscription session — no separate paid API key needed.
 **Gap: no CI job** — unlike the other AI modules, this only runs when invoked manually (`npm run test-evolution`),
 not wired into `regression.yml` yet.
 
-## 8. Page Knowledge Cache
+## 8. Goal-Based Tests
+
+```bash
+npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user (default: buttons-dynamic-click)
+```
+
+`src/goal-evolution/` is a different kind of test authoring than [Self-Evolving Test
+Suite](#7-self-evolving-test-suite): instead of asking an AI to write a whole test in one shot, it gives an AI a
+**goal in plain English** — no steps, no locators, and (for `book-store-register-user`) not even which layer
+(UI vs. API) to use — and lets it work out how to reach it from a [page-knowledge](#9-page-knowledge-cache) file
+alone (it has no browser or network access of its own).
+
+The `goal-solver` persona (extends `test-developer`, see [AI Agent Personas](#10-ai-agent-personas)) only ever
+writes a client/Page Object plus one exported `achieve(...)` driver function — never a spec file, never an
+`expect(...)` call. The success check (`Goal.succeedsWhen`) is written by a human ahead of time, lives in a `Goal`
+definition (`src/goal-evolution/goals/*.ts`) the agent never sees, and runs from a human-owned spec file
+(`tests/{ui,api}/*-goal.spec.ts`) right after `achieve()` returns, in the same context (`Page` for a UI goal,
+`APIRequestContext` for an API goal — `Goal<TCtx>` is generic over this). This split exists because an agent's own
+belief that it "achieved the goal" isn't evidence of anything — only a fixed, human-authored assertion the agent
+couldn't influence is.
+
+`src/goal-evolution/run.ts` also runs one narrow contract check per goal (`Goal.contractChecks`) on the generated
+driver — e.g. for `buttons-dynamic-click`, the "Click Me" button's `id` is regenerated on every page load, so a
+driver that hardcoded it would pass once and rot on the next run; for `book-store-register-user`, the driver must
+accept the username as a parameter rather than hardcoding one, so the harness (not the driver) controls the
+identity the oracle checks — before compiling and running the oracle spec.
+
+**Stopping and reporting when a goal can't be reached.** A goal fails to resolve for one of three distinct
+reasons, and `run.ts` reports which: (1) generation itself hangs — bounded by a per-attempt wall-clock timeout on
+the Claude CLI call (`ATTEMPT_TIMEOUT_MS`, via `cli-fallback.ts`'s `CliTimeoutError` — a timeout is re-thrown
+immediately rather than silently falling through to the Gemini fallback tiers, so it isn't misreported as "the
+model failed"); (2) the driver comes back but violates its contract (writes its own `expect(...)`, hardcodes an
+identity) — not retried, since a second generation attempt is unlikely to fix a rule violation differently; (3)
+the driver is clean but the **oracle** fails — retried up to `MAX_ATTEMPTS` (2, kept low deliberately: each
+`book-store-register-user` attempt registers a real user on demoqa.com), and the final report explicitly points at
+the goal's `pageKnowledgeFile` as the likely cause, since a clean driver failing the oracle repeatedly is usually
+the page-knowledge file being wrong or stale, not an agent mistake.
+
+**Two goals, two things each proves:**
+
+- `buttons-dynamic-click` (UI) — the agent has to infer a *locator strategy* from a behavior note (an id that's
+  regenerated on every page load), not just copy a locator out of the page-knowledge table.
+- `book-store-register-user` (API) — a differently-shaped claim, calibrated deliberately: `docs/page-knowledge/
+  book-store-register.md` documents *two* possible paths (a CAPTCHA-blocked UI form, and a working REST endpoint)
+  and states outright which one is achievable — the agent isn't deriving that conclusion from raw evidence, it's
+  reading a conclusion a human already reached and correctly acting on it: choosing the API layer, writing the
+  client in the existing `booking.client.ts` shape, and never touching the UI form. The goal description itself
+  still never says "use the API" — only the page-knowledge file does. The oracle re-derives proof of registration
+  independently (`GenerateToken` + a duplicate-registration check) rather than trusting the driver's own response,
+  and the spec cleans up the created user via `DELETE` in a `finally` block (confirmed live: cleanup logs the
+  actual `DELETE` response status, not just "it ran").
+
+> [!NOTE]
+> This is a **demo-scale example**, not a general framework: two goals, two target pages/endpoints deliberately
+> chosen to have no existing Page Object/client, no CI wiring, no branch/PR flow like `test-evolution` has.
+> Runtime goal execution (an agent driving the browser/API live on every test run, rather than resolving the goal
+> once into a deterministic spec) was considered and rejected — it would reintroduce AI into the decisive path of
+> every CI run, which is the opposite of what this framework is trying to move away from.
+
+## 9. Page Knowledge Cache
 
 `docs/page-knowledge/` holds one markdown file per DemoQA page under test — locators, id/label mismatches, and
 non-obvious behavior discovered the first time that page was explored in a browser. Committed to the repo, not
@@ -340,7 +401,7 @@ failure on a documented locator), never on a schedule.
 > work — that failure is the trigger to go re-verify and update the file, not a background check catching it
 > earlier.
 
-## 9. AI Agent Personas
+## 10. AI Agent Personas
 
 `ai-agents/` standardizes the AI roles that were previously inline prompt strings scattered across
 `test-evolution`/`agent-fixer` — same underlying behavior, one place to read/edit what each role is
@@ -355,9 +416,13 @@ ai-agents/
 │   ├── locator-medic.md   fixes one broken locator in source (was agent-fixer's inline prompt)
 │   └── reviewer-tests.md  read-only architecture/style review, VERDICT/REASON output
 └── profiles/             env files controlling which model tier a role runs on
-    ├── cheap.env           generation tier: Claude (Sonnet 5, --effort medium) writes first;
-    │                       Gemini primary/fallback (AI_AGENTS_MODEL, own quota, separate from
-    │                       healwright's AI_MODEL) is reserve-only, reached if Claude itself fails
+    ├── cheap.env           generation tier: Claude (Sonnet 5, --effort medium) writes first; three
+    │                       Gemini models (AI_AGENTS_MODEL/_FALLBACK/_FALLBACK_2, separate from
+    │                       healwright's AI_MODEL) are reserve-only, reached only if Claude fails —
+    │                       each can optionally get its own API key (AI_AGENTS_GEMINI_API_KEY[_FALLBACK[_2]],
+    │                       set in .env) for cross-project quota independence, confirmed live: a
+    │                       call on one key's short-window limit didn't affect the very next call
+    │                       on a different key
     └── paranoid.env         review tier: same provider (Claude) as generation, but HIGHER effort
                              (AI_REVIEW_CLAUDE_EFFORT=high vs. generation's medium) — a review at
                              the same effort as generation defeats the point of a paranoid pass
@@ -368,6 +433,7 @@ ai-agents/
 | `test-developer` | `src/test-evolution/propose-test.ts` | `npm run test-evolution` |
 | `locator-medic` | `src/agent-fixer/fix-proposer.ts` | `npm run agent-fixer` (layer 2, cache-miss fallback) |
 | `reviewer-tests` | `src/ai-agents/reviewer-tests.ts` | `npm run test-evolution`, as a second gate after the generated test already passed a real run |
+| `goal-solver` | `src/goal-evolution/propose-driver.ts` | `npm run goal-evolution` — extends `test-developer`, resolves a plain-English goal into a driver, never writes the oracle |
 | `qa-analyst` | `src/ai-agents/qa-analyst.ts` | `npm run qa-analyst -- <requirement-file>` — standalone, not wired into CI (a requirement has no fixed file location the way an observability run does) |
 
 > [!IMPORTANT]
