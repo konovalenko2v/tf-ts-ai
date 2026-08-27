@@ -4,7 +4,7 @@
 // internal yes/no checks (thin-context, sibling-relevance) are about gathering the *right*
 // context, not about judging the failure itself.
 
-import { askYesNoWithReason, YesNoWithReason } from './gemini-verdict';
+import { askYesNoWithReason, YesNoWithReason } from '../ai-agents/gemini-text';
 import { JiraContext } from './collect-context';
 
 export interface FailingStep {

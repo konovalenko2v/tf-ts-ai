@@ -20,9 +20,10 @@ self-repair, test selection, and triage.
 | 6 | [Jira-Driven Red-Test Triage](#6-jira-driven-red-test-triage) | 🟡 ~60% | Reads Jira context for a failing assertion, verdicts bug vs. intentional change | **Triage** = sorting failures by what actually needs attention. A red test isn't automatically a bug — it might just be asserting old, now-intentionally-changed behavior. This tells you which, using the ticket that likely caused it, instead of a human having to go look it up |
 | 7 | [Self-Evolving Test Suite](#7-self-evolving-test-suite) | 🟡 ~70% | AI proposes a new edge-case test, only opens a PR if it demonstrably passes | Grows coverage without waiting for a human to think up every edge case — but only ever proposes a test it already proved passes, never an unverified guess |
 | 8 | [Page Knowledge Cache](#8-page-knowledge-cache) | 🟢 100% | Committed per-page DOM/behavior notes — skip re-exploring a page already documented | Saves real time/tokens — writing a test for a page already explored once doesn't require opening a browser and re-discovering its structure from scratch |
-| 9 | [Smart Retry / Prioritization](#not-yet-built) | ⚪ 0% | Not built — today only a printed verdict, no dynamic retry-budget control | Would let CI stop wasting retries on failures that can never pass on retry (e.g. a missing env var) and spend them only where retrying can actually help |
-| 10 | Intent-Based Testing + Draft PR on a jira-triage YES verdict | ⚪ 0% | Not built — jira-triage stops at the verdict, no fix generation | Would close the loop #6 opens: once triage confirms "this test is just outdated," automatically propose the updated test instead of leaving a human to rewrite it |
-| 11 | Healwright → Claude third AI tier | ⚪ 0% | Deliberately not built — needs a paid `ANTHROPIC_API_KEY`, not available | Would add a second fallback model for runtime healing (today it's Gemini→Gemini only) so a locator fails to heal only if two providers both can't find it |
+| 9 | [AI Agent Personas](#9-ai-agent-personas) | 🟡 ~80% | Standardized personas (test-developer, locator-medic, reviewer-tests, qa-analyst) with a 3-tier CLI fallback and a separate review-tier model | One place to read/edit what each AI role is instructed to do, instead of an inline prompt string buried in each module — and a second, differently-modeled review gate before a generated test ships |
+| 10 | [Smart Retry / Prioritization](#not-yet-built) | ⚪ 0% | Not built — today only a printed verdict, no dynamic retry-budget control | Would let CI stop wasting retries on failures that can never pass on retry (e.g. a missing env var) and spend them only where retrying can actually help |
+| 11 | Intent-Based Testing + Draft PR on a jira-triage YES verdict | ⚪ 0% | Not built — jira-triage stops at the verdict, no fix generation | Would close the loop #6 opens: once triage confirms "this test is just outdated," automatically propose the updated test instead of leaving a human to rewrite it |
+| 12 | Healwright → Claude third AI tier | ⚪ 0% | Deliberately not built — needs a paid `ANTHROPIC_API_KEY`, not available | Would add a second fallback model for runtime healing (today it's Gemini→Gemini only) so a locator fails to heal only if two providers both can't find it |
 
 🟢 built and wired into CI · 🟡 built, partially wired or with a known gap · ⚪ not built yet
 
@@ -88,13 +89,17 @@ src/
 ├── failure-analysis/       groups failures by cause, retry verdicts, healed-test visibility (#4)
 ├── test-selection/         TS import-dependency graph → affected specs (#5)
 ├── jira-triage/            Jira context collection + bug/feature verdict (#6)
-└── test-evolution/         AI-generated edge-case test, runs it, proposes a PR only if it passes (#7)
+├── test-evolution/         AI-generated edge-case test, runs it, proposes a PR only if it passes (#7)
+└── ai-agents/              shared CLI fallback, Gemini text/verdict helper, reviewer-tests, qa-analyst (#9)
 tests/
 ├── api/                  auth.spec.ts, booking-crud.spec.ts, negative.spec.ts (+ test-evolution output)
 ├── graphql/               positive.spec.ts, negative.spec.ts
 └── ui/                    forum.spec.ts, text-box.spec.ts, check-box.spec.ts
 docs/
 └── page-knowledge/       one markdown file per DemoQA page under test (#8)
+ai-agents/
+├── personas/             system prompt per AI role — qa-analyst, test-developer, locator-medic, reviewer-tests (#9)
+└── profiles/              cheap.env (Claude Sonnet 5 primary, Gemini reserve) / paranoid.env (review tier) (#9)
 resources/
 ├── GQL/                  test GraphQL queries (*.json)
 └── files/                 upload-test.txt for the UI test
@@ -216,8 +221,9 @@ Two layers, in this order:
 
 1. **Deterministic cache lookup** (no AI call) — an exact match against the healwright cache means the fix is a
    fixed template per locator type, not a decision an LLM needs to make.
-2. **AI fallback**, only when a selector has no exact cache match — the Gemini CLI reads the page object file,
-   edits the broken locator's line, and re-runs `npx tsc --noEmit` to confirm it compiles.
+2. **AI fallback** (the `locator-medic` persona, see [AI Agent Personas](#9-ai-agent-personas)), only when a
+   selector has no exact cache match — reads the page object file, edits the broken locator's line, and re-runs
+   `npx tsc --noEmit` to confirm it compiles. Runs the shared 3-tier CLI fallback (Claude → Gemini → Gemini).
 
 Then: creates a branch, commits, pushes, and opens a PR — only if at least one fix was actually applied. In CI
 this runs as a separate job gated to successful pushes on `master`; the workflow's own `push`-only trigger means a
@@ -295,20 +301,21 @@ new path toward the ticket's described goal, instead of patching the old asserti
 npm run test-evolution
 ```
 
-`src/test-evolution/` asks an AI to propose one new edge-case API test from an existing reference spec, actually
-runs the generated test, and only commits + opens a **Draft** PR if it demonstrably passes — a generated test that
-fails is discarded, never proposed. The PR body includes the real test titles (parsed from the generated file, not
-re-summarized) and a results table read from the observability log, not just a claim that it passed.
+`src/test-evolution/` asks an AI (the `test-developer` persona, see
+[AI Agent Personas](#9-ai-agent-personas)) to propose one new edge-case API test from an existing reference spec,
+actually runs the generated test, and only commits + opens a **Draft** PR if it demonstrably passes — a generated
+test that fails is discarded, never proposed. The PR body includes the real test titles (parsed from the generated
+file, not re-summarized), a results table read from the observability log, and a `reviewer-tests` verdict.
 
-Gemini CLI is the primary generator; on any failure (commonly the free-tier daily quota), it falls back to the
-Claude CLI, authenticating via the existing Claude Code subscription session — no separate paid API key needed for
-this fallback path specifically.
+Generation runs the shared 3-tier CLI fallback: Claude CLI (Sonnet 5, `--effort medium`) primary → Gemini primary →
+Gemini fallback model, only falling through to Gemini if Claude itself fails. Claude authenticates through the
+existing Claude Code subscription session — no separate paid API key needed.
 
 > [!NOTE]
-> This Claude CLI fallback (`claude -p ...`) is unrelated to healwright's own AI calls. Healwright's
-> `AnthropicProvider` uses the official `@anthropic-ai/sdk` directly (`new Anthropic({ apiKey })`), which requires
-> a paid `ANTHROPIC_API_KEY` — the CLI subprocess approach used here instead authenticates through whatever
-> Claude Code session is already logged in, with no separate key. The two are not interchangeable; see
+> The Claude CLI tier (`claude -p ...`) is unrelated to healwright's own AI calls. Healwright's `AnthropicProvider`
+> uses the official `@anthropic-ai/sdk` directly (`new Anthropic({ apiKey })`), which requires a paid
+> `ANTHROPIC_API_KEY` — the CLI subprocess approach used here instead authenticates through whatever Claude Code
+> session is already logged in, with no separate key. The two are not interchangeable; see
 > [Not yet built](#not-yet-built) for why healwright itself doesn't get this same fallback.
 
 **Gap: no CI job** — unlike the other AI modules, this only runs when invoked manually (`npm run test-evolution`),
@@ -332,6 +339,53 @@ failure on a documented locator), never on a schedule.
 > here detects that proactively. The only signal is a test failing against a locator the cache says should still
 > work — that failure is the trigger to go re-verify and update the file, not a background check catching it
 > earlier.
+
+## 9. AI Agent Personas
+
+`ai-agents/` standardizes the AI roles that were previously inline prompt strings scattered across
+`test-evolution`/`agent-fixer` — same underlying behavior, one place to read/edit what each role is
+instructed to do, plus one genuinely new gate (`reviewer-tests`).
+
+```
+ai-agents/
+├── personas/            one markdown file per role — the system prompt, read at runtime
+│   ├── qa-analyst.md      reads a requirement, writes a scenario checklist (no code)
+│   ├── test-developer.md  writes test code — hard rule: only existing Page Objects/clients/steps,
+│   │                      never a new abstraction (was test-evolution's inline prompt)
+│   ├── locator-medic.md   fixes one broken locator in source (was agent-fixer's inline prompt)
+│   └── reviewer-tests.md  read-only architecture/style review, VERDICT/REASON output
+└── profiles/             env files controlling which model tier a role runs on
+    ├── cheap.env           generation tier: Claude (Sonnet 5, --effort medium) writes first;
+    │                       Gemini primary/fallback (AI_AGENTS_MODEL, own quota, separate from
+    │                       healwright's AI_MODEL) is reserve-only, reached if Claude itself fails
+    └── paranoid.env         review tier: same provider (Claude) as generation, but HIGHER effort
+                             (AI_REVIEW_CLAUDE_EFFORT=high vs. generation's medium) — a review at
+                             the same effort as generation defeats the point of a paranoid pass
+```
+
+| Persona | Lives in | Wired into |
+|---|---|---|
+| `test-developer` | `src/test-evolution/propose-test.ts` | `npm run test-evolution` |
+| `locator-medic` | `src/agent-fixer/fix-proposer.ts` | `npm run agent-fixer` (layer 2, cache-miss fallback) |
+| `reviewer-tests` | `src/ai-agents/reviewer-tests.ts` | `npm run test-evolution`, as a second gate after the generated test already passed a real run |
+| `qa-analyst` | `src/ai-agents/qa-analyst.ts` | `npm run qa-analyst -- <requirement-file>` — standalone, not wired into CI (a requirement has no fixed file location the way an observability run does) |
+
+> [!IMPORTANT]
+> `reviewer-tests` is **advisory, not a gate that blocks the PR** — a CLI/API failure here falls through to
+> "proceed without a review verdict" rather than discarding an already-verified-passing test. The point is a
+> second opinion from a different model tier surfaced in the PR body, not a second pass/fail hurdle a flaky review
+> call could block on.
+
+> [!NOTE]
+> Two source files were renamed, not duplicated, during this standardization: `src/jira-triage/gemini-verdict.ts`
+> moved to `src/ai-agents/gemini-text.ts` (the shared plain-text/verdict Gemini call helper, now parameterized by
+> model pair instead of hardcoded to `AI_MODEL`/`AI_MODEL_FALLBACK`, so `reviewer-tests` can run on a different
+> tier than generation). `jira-triage` itself is unchanged — same behavior, updated import path.
+
+A fifth file, `ai-agents/personas/reporter.md`, documents the rendering contract both `failure-analysis` and
+`test-evolution` already follow (results table shape, "every claim cites its observability source") — it's read
+by a human maintaining either module, not loaded by any script at runtime; there's no separate `reporter` code
+path to wire in, since both callers already produce markdown in this shape.
 
 ## Not yet built
 
