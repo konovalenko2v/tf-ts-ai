@@ -5,15 +5,38 @@
 // Deliberately does NOT default to AI_MODEL — that's the same tier that generated the code under
 // review (test-developer runs on cli-fallback.ts's AI_AGENTS_MODEL, which itself falls back
 // through AI_MODEL/AI_MODEL_FALLBACK before reaching Claude). A cheap model reviewing its own
-// output at the same capability tier defeats the purpose of a paranoid pass — AI_REVIEW_MODEL
-// (set by ai-agents/profiles/paranoid.env) is a separate, stronger tier.
+// output at the same capability tier defeats the purpose of a paranoid pass.
+//
+// Loads ai-agents/profiles/paranoid.env itself (rather than requiring the caller to `source` it
+// first) — a review step that silently falls back to the generation model when the profile isn't
+// manually sourced defeats the entire point of a separate review tier, so this can't depend on an
+// operator remembering an extra shell step.
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { askYesNoWithReason, YesNoWithReason } from './gemini-text';
 
 const PERSONA_FILE = path.join(__dirname, '../../ai-agents/personas/reviewer-tests.md');
-const REVIEW_MODEL = process.env.AI_REVIEW_MODEL ?? process.env.AI_MODEL ?? 'gemini-3.6-flash';
+const PROFILE_FILE = path.join(__dirname, '../../ai-agents/profiles/paranoid.env');
+
+function loadReviewModel(): string {
+  if (process.env.AI_REVIEW_MODEL) return process.env.AI_REVIEW_MODEL;
+
+  if (fs.existsSync(PROFILE_FILE)) {
+    const match = fs
+      .readFileSync(PROFILE_FILE, 'utf-8')
+      .split('\n')
+      .find((line) => line.startsWith('AI_REVIEW_MODEL='));
+    if (match) return match.split('=')[1].trim();
+  }
+
+  throw new Error(
+    `AI_REVIEW_MODEL is not set and could not be read from ${PROFILE_FILE} — refusing to silently fall back to ` +
+      'the generation model, since that would let the cheap model review its own output.',
+  );
+}
+
+const REVIEW_MODEL = loadReviewModel();
 
 export type ReviewVerdict = YesNoWithReason;
 
