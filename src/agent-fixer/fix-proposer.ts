@@ -5,8 +5,8 @@
 //
 // Unlike the cache layer, this is a real agentic call, run under the locator-medic persona
 // (ai-agents/personas/locator-medic.md) through the same shared 3-tier CLI fallback
-// (src/ai-agents/cli-fallback.ts) test-developer uses — Gemini primary -> Gemini fallback model
-// -> Claude CLI, no separate paid credential for any tier.
+// (src/ai-agents/cli-fallback.ts) test-developer uses — Claude CLI primary -> Gemini primary
+// -> Gemini fallback model, no separate paid credential for any tier.
 
 import * as fs from 'fs';
 import * as path from 'path';

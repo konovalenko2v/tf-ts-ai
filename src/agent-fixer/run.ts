@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     }
 
     // Layer 2: AI fallback (locator-medic persona) — only reached when the cache has no exact
-    // answer. Runs the shared 3-tier CLI fallback (Gemini -> Gemini -> Claude), which edits
+    // answer. Runs the shared 3-tier CLI fallback (Claude -> Gemini -> Gemini), which edits
     // TARGET_FILE itself; detect whether it actually changed the broken selector's line.
     // A CLI failure (rate limit, quota, network) must not abort the whole run — cache-layer
     // fixes already applied for other selectors are still worth committing and opening a PR for.

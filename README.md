@@ -99,7 +99,7 @@ docs/
 └── page-knowledge/       one markdown file per DemoQA page under test (#8)
 ai-agents/
 ├── personas/             system prompt per AI role — qa-analyst, test-developer, locator-medic, reviewer-tests (#9)
-└── profiles/              cheap.env (generation tier) / paranoid.env (review tier) — model selection, not code (#9)
+└── profiles/              cheap.env (Claude Sonnet 5 primary, Gemini reserve) / paranoid.env (review tier) (#9)
 resources/
 ├── GQL/                  test GraphQL queries (*.json)
 └── files/                 upload-test.txt for the UI test
@@ -223,7 +223,7 @@ Two layers, in this order:
    fixed template per locator type, not a decision an LLM needs to make.
 2. **AI fallback** (the `locator-medic` persona, see [AI Agent Personas](#9-ai-agent-personas)), only when a
    selector has no exact cache match — reads the page object file, edits the broken locator's line, and re-runs
-   `npx tsc --noEmit` to confirm it compiles. Runs the shared 3-tier CLI fallback (Gemini → Gemini → Claude).
+   `npx tsc --noEmit` to confirm it compiles. Runs the shared 3-tier CLI fallback (Claude → Gemini → Gemini).
 
 Then: creates a branch, commits, pushes, and opens a PR — only if at least one fix was actually applied. In CI
 this runs as a separate job gated to successful pushes on `master`; the workflow's own `push`-only trigger means a
@@ -307,8 +307,9 @@ actually runs the generated test, and only commits + opens a **Draft** PR if it 
 test that fails is discarded, never proposed. The PR body includes the real test titles (parsed from the generated
 file, not re-summarized), a results table read from the observability log, and a `reviewer-tests` verdict.
 
-Generation runs the shared 3-tier CLI fallback: Gemini primary → Gemini fallback model → Claude CLI, authenticating
-through the existing Claude Code subscription session for the last tier — no separate paid API key needed.
+Generation runs the shared 3-tier CLI fallback: Claude CLI (Sonnet 5, `--effort medium`) primary → Gemini primary →
+Gemini fallback model, only falling through to Gemini if Claude itself fails. Claude authenticates through the
+existing Claude Code subscription session — no separate paid API key needed.
 
 > [!NOTE]
 > The Claude CLI tier (`claude -p ...`) is unrelated to healwright's own AI calls. Healwright's `AnthropicProvider`
@@ -354,10 +355,12 @@ ai-agents/
 │   ├── locator-medic.md   fixes one broken locator in source (was agent-fixer's inline prompt)
 │   └── reviewer-tests.md  read-only architecture/style review, VERDICT/REASON output
 └── profiles/             env files controlling which model tier a role runs on
-    ├── cheap.env           generation tier: AI_AGENTS_MODEL (own quota, separate from
-    │                       healwright's AI_MODEL) + Gemini fallback + Claude CLI as last resort
-    └── paranoid.env         review tier: AI_REVIEW_MODEL — deliberately a DIFFERENT, stronger
-                             model than whatever generated the code under review
+    ├── cheap.env           generation tier: Claude (Sonnet 5, --effort medium) writes first;
+    │                       Gemini primary/fallback (AI_AGENTS_MODEL, own quota, separate from
+    │                       healwright's AI_MODEL) is reserve-only, reached if Claude itself fails
+    └── paranoid.env         review tier: same provider (Claude) as generation, but HIGHER effort
+                             (AI_REVIEW_CLAUDE_EFFORT=high vs. generation's medium) — a review at
+                             the same effort as generation defeats the point of a paranoid pass
 ```
 
 | Persona | Lives in | Wired into |

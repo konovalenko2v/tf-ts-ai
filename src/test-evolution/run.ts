@@ -72,7 +72,7 @@ async function main(): Promise<void> {
 
   // CLI failures (quota, rate limit, network) must not leave an orphaned branch behind — same
   // isolation agent-fixer applies around its own AI calls. proposeTest() already runs the shared
-  // 3-tier fallback (gemini primary -> gemini fallback -> claude, cli-fallback.ts) internally, so
+  // 3-tier fallback (claude primary -> gemini primary -> gemini fallback, cli-fallback.ts) internally, so
   // reaching this catch means all three tiers failed.
   try {
     proposeTest(REFERENCE_FILE, OUTPUT_FILE);
