@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import { execFileSync } from 'child_process';
 import { findRecoveries, findScreenshotForTest } from './find-recoveries';
 import { findByContext, loadHealedCache, renderLocatorExpression } from './cache-lookup';
-import { proposeFixWithGemini } from './fix-proposer';
+import { proposeFixWithAI } from './fix-proposer';
 
 const SELF_HEAL_CACHE = '.self-heal/healed_locators.json';
 const TARGET_FILE = 'src/ui/pages/practice-form.page.ts';
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
   const branch = `${BRANCH_PREFIX}${Date.now()}`;
   execFileSync('git', ['checkout', '-b', branch], { stdio: 'inherit' });
 
-  const applied: { selector: string; replacementCode: string; source: 'cache' | 'gemini-fallback' }[] = [];
+  const applied: { selector: string; replacementCode: string; source: 'cache' | 'ai-fallback' }[] = [];
   const unresolved: string[] = [];
 
   for (const candidate of candidates) {
@@ -111,23 +111,24 @@ async function main(): Promise<void> {
       continue;
     }
 
-    // Layer 2: AI fallback — only reached when the cache has no exact answer. The Gemini CLI
-    // edits TARGET_FILE itself; detect whether it actually changed the broken selector's line.
+    // Layer 2: AI fallback (locator-medic persona) — only reached when the cache has no exact
+    // answer. Runs the shared 3-tier CLI fallback (Gemini -> Gemini -> Claude), which edits
+    // TARGET_FILE itself; detect whether it actually changed the broken selector's line.
     // A CLI failure (rate limit, quota, network) must not abort the whole run — cache-layer
     // fixes already applied for other selectors are still worth committing and opening a PR for.
     const before = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n')[candidate.lineIndex];
     const screenshotPath = findScreenshotForTest(candidate.testId);
     try {
-      proposeFixWithGemini(candidate.selector, candidate.contextName, TARGET_FILE, screenshotPath);
+      proposeFixWithAI(candidate.selector, candidate.contextName, TARGET_FILE, screenshotPath);
     } catch (err) {
-      process.stderr.write(`[agent-fixer] Gemini fallback failed for ${candidate.selector}: ${(err as Error).message}\n`);
+      process.stderr.write(`[agent-fixer] AI fallback failed for ${candidate.selector}: ${(err as Error).message}\n`);
       unresolved.push(candidate.selector);
       continue;
     }
     const afterLines = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n');
     const after = afterLines[candidate.lineIndex];
     if (after !== before && !after.includes(candidate.selector)) {
-      applied.push({ selector: candidate.selector, replacementCode: after.trim(), source: 'gemini-fallback' });
+      applied.push({ selector: candidate.selector, replacementCode: after.trim(), source: 'ai-fallback' });
     } else {
       unresolved.push(candidate.selector);
     }
@@ -170,13 +171,13 @@ async function main(): Promise<void> {
         '',
         'Fixes applied:',
         ...applied.map(
-          (f) => `- \`${f.selector}\` -> \`${f.replacementCode}\` (${f.source === 'cache' ? 'from healwright cache, no AI call' : 'Gemini fallback, no cache match'})`,
+          (f) => `- \`${f.selector}\` -> \`${f.replacementCode}\` (${f.source === 'cache' ? 'from healwright cache, no AI call' : 'locator-medic AI fallback, no cache match'})`,
         ),
         ...(unresolved.length > 0
           ? ['', 'Selectors that still need a human:', ...unresolved.map((s) => `- \`${s}\``)]
           : []),
         '',
-        `See \`${SELF_HEAL_CACHE}\` in this branch for the exact strategy/confidence healwright used to recover the cache-layer fixes at runtime — review the confidence before merging, a low-confidence match may be overfit to one page state. Gemini-fallback fixes have no such record and deserve closer review.`,
+        `See \`${SELF_HEAL_CACHE}\` in this branch for the exact strategy/confidence healwright used to recover the cache-layer fixes at runtime — review the confidence before merging, a low-confidence match may be overfit to one page state. locator-medic (AI fallback) fixes have no such record and deserve closer review.`,
       ].join('\n'),
     ],
     { stdio: 'inherit' },

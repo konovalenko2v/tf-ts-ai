@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import { execFileSync } from 'child_process';
 import { proposeTest } from './propose-test';
+import { reviewGeneratedTest } from '../ai-agents/reviewer-tests';
 import { latestRunFile, readEvents } from '../observability/run-file';
 import { TestSummaryEvent } from '../observability/types';
 
@@ -70,13 +71,13 @@ async function main(): Promise<void> {
   execFileSync('git', ['checkout', '-b', branch], { stdio: 'inherit' });
 
   // CLI failures (quota, rate limit, network) must not leave an orphaned branch behind — same
-  // isolation agent-fixer applies around its own Gemini CLI call. proposeTest() already falls
-  // back from gemini to claude internally on any failure, so reaching this catch means both CLIs
-  // failed.
+  // isolation agent-fixer applies around its own AI calls. proposeTest() already runs the shared
+  // 3-tier fallback (gemini primary -> gemini fallback -> claude, cli-fallback.ts) internally, so
+  // reaching this catch means all three tiers failed.
   try {
     proposeTest(REFERENCE_FILE, OUTPUT_FILE);
   } catch (err) {
-    abandon(branch, `AI CLI failed (gemini, then claude fallback): ${(err as Error).message}`, false);
+    abandon(branch, `AI CLI failed (all 3 tiers: gemini primary, gemini fallback, claude): ${(err as Error).message}`, false);
     return;
   }
 
@@ -91,6 +92,21 @@ async function main(): Promise<void> {
   if (!passed) {
     abandon(branch, 'generated test did not pass — discarding, not proposing a PR for a test that fails', true);
     return;
+  }
+
+  // Second gate, after "it passed": reviewer-tests (paranoid profile) checks architecture/style
+  // conformance and assertion honesty — a passing test can still reach past an existing Page
+  // Object/client or assert something that looks like a guess. Failure here (a CLI error, not a
+  // NO verdict) doesn't block the PR — the review is advisory, and a broken review CLI shouldn't
+  // discard an otherwise-verified-passing test.
+  let review: { verdict: boolean; reason: string } | undefined;
+  try {
+    review = await reviewGeneratedTest(OUTPUT_FILE, REFERENCE_FILE);
+    if (!review.verdict) {
+      process.stderr.write(`[test-evolution] reviewer-tests flagged this test: ${review.reason}\n`);
+    }
+  } catch (err) {
+    process.stderr.write(`[test-evolution] reviewer-tests call failed, proceeding without a review verdict: ${(err as Error).message}\n`);
   }
 
   process.stderr.write(`[test-evolution] ${OUTPUT_FILE} passed — committing and opening a PR\n`);
@@ -133,6 +149,12 @@ async function main(): Promise<void> {
         renderResultsTable(results),
         '',
         `Run command: \`npx playwright test ${OUTPUT_FILE} --project=api --retries=0\``,
+        '',
+        '## reviewer-tests verdict',
+        '',
+        review
+          ? `${review.verdict ? '✅ YES' : '⚠️ NO'} — ${review.reason}`
+          : '_reviewer-tests call failed — no automated review verdict for this PR, review manually._',
         '',
         'Review the assertion itself for correctness (a passing test can still assert the wrong',
         'thing — see the file header comment in `src/test-evolution/propose-test.ts` for why this',

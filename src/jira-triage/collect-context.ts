@@ -1,5 +1,5 @@
 import { getIssue, getSubtasks, adfToPlainText, commentsToPlainText, JiraIssue } from './jira-client';
-import { askYesNo } from './gemini-verdict';
+import { askYesNo } from '../ai-agents/gemini-text';
 
 export interface TicketContext {
   key: string;
