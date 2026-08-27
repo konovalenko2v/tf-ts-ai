@@ -46,9 +46,27 @@ function requireProfileVar(name: string): string {
 const REVIEW_CLAUDE_TIER = requireProfileVar('AI_REVIEW_CLAUDE_TIER');
 const REVIEW_CLAUDE_EFFORT = requireProfileVar('AI_REVIEW_CLAUDE_EFFORT');
 
+export type Severity = 'ok' | 'minor' | 'major';
+
+export interface ReviewFinding {
+  check: string;
+  severity: Severity;
+  note: string;
+}
+
 export interface ReviewVerdict {
   verdict: boolean;
-  reason: string;
+  findings: ReviewFinding[];
+}
+
+// Renders the structured verdict as short markdown bullets for a human skimming a PR body —
+// one line per check, severity tag up front, no run-on prose. See ai-agents/personas/reviewer-tests.md
+// "Output contract" for why: a single "one sentence" reason field made a 4-part review
+// (architecture/style/assertion-honesty/cleanup) unreadable once more than one check had a finding.
+export function renderVerdict(v: ReviewVerdict): string {
+  const icon: Record<Severity, string> = { ok: '✅', minor: '⚠️', major: '❌' };
+  const lines = v.findings.map((f) => `- ${icon[f.severity]} **${f.check}**: ${f.note}`);
+  return [`**Overall: ${v.verdict ? '✅ YES — safe to propose as-is' : '❌ NO — needs a look before merging'}**`, '', ...lines].join('\n');
 }
 
 export async function reviewGeneratedTest(testFilePath: string, referenceFilePath: string): Promise<ReviewVerdict> {
@@ -72,10 +90,6 @@ export async function reviewGeneratedTest(testFilePath: string, referenceFilePat
     '```typescript',
     generatedCode,
     '```',
-    '',
-    'Respond with exactly two lines, nothing else:',
-    'VERDICT: YES or NO',
-    'REASON: one sentence explaining why',
   ].join('\n');
 
   // Read-only tools only — reviewer-tests must never edit the file it's reviewing.
@@ -86,14 +100,23 @@ export async function reviewGeneratedTest(testFilePath: string, referenceFilePat
   );
 
   const verdictMatch = text.match(/VERDICT:\s*(YES|NO)/i);
-  const reasonMatch = text.match(/REASON:\s*(.+)/i);
-
   if (!verdictMatch) {
     throw new Error(`Could not parse a VERDICT line from claude's response: ${text}`);
   }
 
+  const findingLines = [...text.matchAll(/^-\s*\[(ok|minor|major)\]\s*([^:]+):\s*(.+)$/gim)];
+  const findings: ReviewFinding[] = findingLines.map((m) => ({
+    severity: m[1].toLowerCase() as Severity,
+    check: m[2].trim(),
+    note: m[3].trim(),
+  }));
+
+  if (findings.length === 0) {
+    throw new Error(`VERDICT line found but no [ok|minor|major] bullets parsed from claude's response: ${text}`);
+  }
+
   return {
     verdict: verdictMatch[1].toUpperCase() === 'YES',
-    reason: reasonMatch?.[1]?.trim() ?? '(no reason given)',
+    findings,
   };
 }

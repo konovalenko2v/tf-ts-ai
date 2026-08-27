@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { execFileSync } from 'child_process';
 import { proposeTest } from './propose-test';
-import { reviewGeneratedTest } from '../ai-agents/reviewer-tests';
+import { reviewGeneratedTest, renderVerdict, ReviewVerdict } from '../ai-agents/reviewer-tests';
 import { latestRunFile, readEvents } from '../observability/run-file';
 import { TestSummaryEvent } from '../observability/types';
 
@@ -99,11 +99,12 @@ async function main(): Promise<void> {
   // Object/client or assert something that looks like a guess. Failure here (a CLI error, not a
   // NO verdict) doesn't block the PR — the review is advisory, and a broken review CLI shouldn't
   // discard an otherwise-verified-passing test.
-  let review: { verdict: boolean; reason: string } | undefined;
+  let review: ReviewVerdict | undefined;
   try {
     review = await reviewGeneratedTest(OUTPUT_FILE, REFERENCE_FILE);
     if (!review.verdict) {
-      process.stderr.write(`[test-evolution] reviewer-tests flagged this test: ${review.reason}\n`);
+      const majors = review.findings.filter((f) => f.severity === 'major').map((f) => `${f.check}: ${f.note}`);
+      process.stderr.write(`[test-evolution] reviewer-tests flagged this test — ${majors.join('; ')}\n`);
     }
   } catch (err) {
     process.stderr.write(`[test-evolution] reviewer-tests call failed, proceeding without a review verdict: ${(err as Error).message}\n`);
@@ -152,9 +153,7 @@ async function main(): Promise<void> {
         '',
         '## reviewer-tests verdict',
         '',
-        review
-          ? `${review.verdict ? '✅ YES' : '⚠️ NO'} — ${review.reason}`
-          : '_reviewer-tests call failed — no automated review verdict for this PR, review manually._',
+        review ? renderVerdict(review) : '_reviewer-tests call failed — no automated review verdict for this PR, review manually._',
         '',
         'Review the assertion itself for correctness (a passing test can still assert the wrong',
         'thing — see the file header comment in `src/test-evolution/propose-test.ts` for why this',
