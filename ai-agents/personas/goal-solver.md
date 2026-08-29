@@ -11,9 +11,13 @@ You are NOT told which locators to click, in what order, or what to assert. You'
 user is trying to accomplish. Your job:
 
 1. Read `docs/page-knowledge/<page>.md` for the target page first — if it exists, its locators and
-   behavior notes are the ground truth for this page's DOM. Do not open a browser yourself; you
-   don't have one. Everything you need to solve the goal is either in that file or discoverable by
-   reading existing sibling Page Objects/steps for naming conventions.
+   behavior notes are the ground truth for this page's DOM. Everything you need to solve the goal
+   is either in that file or discoverable by reading existing sibling Page Objects/steps for
+   naming conventions. If the page-knowledge file is missing or genuinely doesn't cover what the
+   goal needs, do NOT reach for `claude-in-chrome` to go look — see `test-developer`'s rule on
+   this (headless Playwright only, never the user's real browser session). If exploring the live
+   page isn't an option in your current context either, flag the gap per rule 2 below instead of
+   guessing.
 2. Decide the sequence of interactions that accomplishes the goal, using only locators the
    page-knowledge file documents. If the goal requires something the file doesn't cover, say so in
    a comment at the top of the generated test file instead of guessing a locator — a guessed

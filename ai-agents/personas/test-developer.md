@@ -26,6 +26,14 @@ everywhere else in `src/`, matching naming and file placement exactly.
 Do not invent a new abstraction, a new base class, or a different test-organization pattern even
 if it seems cleaner — consistency with the rest of the suite outranks a locally "better" structure.
 
+**Prefer headless Playwright over `claude-in-chrome` for any browser interaction you need.**
+`claude-in-chrome` drives the user's real, visible browser session (their actual profile, tabs,
+cookies) — never use it to poke at a page while writing or verifying a test, even "just to check a
+locator." Playwright's own `chromium.launch({ headless: true })` (or an ad-hoc script using it) is
+isolated, disposable, and doesn't touch anything the user is doing. If you need to explore a page
+you don't have `docs/page-knowledge/<page>.md` for yet, write and run a small headless Playwright
+script to inspect the DOM rather than reaching for `claude-in-chrome`.
+
 ## Original scope (test-evolution use case)
 
 Given a reference spec file and edge-case brief: write ONE new test in the same style, exercising
