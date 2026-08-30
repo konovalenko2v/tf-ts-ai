@@ -177,7 +177,9 @@ async function main(): Promise<void> {
           ? ['', 'Selectors that still need a human:', ...unresolved.map((s) => `- \`${s}\``)]
           : []),
         '',
-        `See \`${SELF_HEAL_CACHE}\` in this branch for the exact strategy/confidence healwright used to recover the cache-layer fixes at runtime — review the confidence before merging, a low-confidence match may be overfit to one page state. locator-medic (AI fallback) fixes have no such record and deserve closer review.`,
+        `This PR auto-merges once the affected test(s) pass ${5}x individually and the affected spec file passes ${2}x as a whole (see .github/workflows/regression.yml's agent-fixer-verify-and-merge job) — it is not held for human review before merging. If master's full regression suite fails right after, the merge is auto-reverted and a new issue opens for a human (agent-fixer-rollback job).`,
+        '',
+        `See \`${SELF_HEAL_CACHE}\` in this branch for the exact strategy/confidence healwright used to recover the cache-layer fixes at runtime, if closer inspection is needed after the fact — a low-confidence match may be overfit to one page state. locator-medic (AI fallback) fixes have no such record.`,
       ].join('\n'),
     ],
     { stdio: 'inherit' },
