@@ -256,9 +256,11 @@ jobs:
   # pass 5 consecutive repeats, AND the whole affected spec file must pass 2 consecutive full runs,
   # before this ever calls `gh pr merge`. See verify-stability.ts for the exact gate.
   agent-fixer-verify-and-merge:
+    # Unlike the `test` job's own always()-based continue-on-error reasoning (an unrelated api
+    # flake shouldn't block a human-facing report), this gate guards an UNREVIEWED merge to
+    # master — it must only proceed when the PR's own CI actually passed.
     if: |
-      always() &&
-      needs.test.result != 'skipped' &&
+      needs.test.result == 'success' &&
       github.event_name == 'pull_request' &&
       startsWith(github.head_ref, 'agent-fixer/')
     needs: test
@@ -312,12 +314,17 @@ jobs:
   # auto-reverts that commit and reopens the story as a human-owned issue — never silently retried,
   # never re-attempted by agent-fixer itself (that would risk a revert/re-fix loop).
   agent-fixer-rollback:
+    # NOTE: matching on head_commit.author.name == 'agent-fixer' does NOT work here — a squash
+    # merge via `gh pr merge` is authored by the PR author / token identity as far as GitHub's
+    # commit metadata is concerned, not by the GIT_AUTHOR_NAME env set on the branch's own commits.
+    # The reliable signal is the squash commit message, which defaults to the PR title — and
+    # run.ts's `gh pr create --title` always starts that title with 'agent-fixer:'.
     if: |
       always() &&
       needs.test.result == 'failure' &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/master' &&
-      github.event.head_commit.author.name == 'agent-fixer'
+      startsWith(github.event.head_commit.message, 'agent-fixer:')
     needs: test
     runs-on: ubuntu-latest
     permissions:
