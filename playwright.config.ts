@@ -18,6 +18,16 @@ export default defineConfig({
     },
     projects: [
         {
+            // Pure-logic unit tests for the AI layer (cli-fallback.ts, classify.ts, etc) — no
+            // browser, no network, no real CLI calls. Kept as a Playwright Test project rather
+            // than pulling in jest/vitest as a second test runner for a handful of files: Playwright
+            // Test's own `test`/`expect` work fine for plain function calls, and this project just
+            // never uses any browser/API fixture.
+            name: 'unit',
+            testDir: './tests/unit',
+            fullyParallel: true,
+        },
+        {
             name: 'api',
             testDir: './tests/api',
             fullyParallel: false,

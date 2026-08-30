@@ -47,7 +47,7 @@ const CLAUDE_EFFORT = process.env.AI_AGENTS_CLAUDE_EFFORT ?? 'medium';
 // caller's own timeoutMs param (that one is Claude-attempt-specific and optional).
 const GEMINI_TIMEOUT_MS = Number(process.env.AI_AGENTS_GEMINI_TIMEOUT_MS) || 5 * 60 * 1000;
 
-interface GeminiTier {
+export interface GeminiTier {
   model: string;
   /** This tier's own API key, if one was configured — see resolveGeminiApiKey(). */
   apiKey: string | undefined;
@@ -67,21 +67,30 @@ const GEMINI_TIERS: GeminiTier[] = dedupeByModel([
   { model: process.env.AI_AGENTS_MODEL_FALLBACK_2 ?? 'gemini-3.5-flash-lite', apiKey: process.env.AI_AGENTS_GEMINI_API_KEY_FALLBACK_2 },
 ]);
 
-function dedupeByModel(tiers: GeminiTier[]): GeminiTier[] {
+// Exported (alongside resolveGeminiApiKeyFrom below) purely so unit tests can exercise this pure
+// logic directly, without needing to reset Node's module cache between test cases to get a
+// different GEMINI_TIERS built from different process.env values — GEMINI_TIERS itself is only
+// ever computed once, at module load. See cli-fallback.test.ts.
+export function dedupeByModel(tiers: GeminiTier[]): GeminiTier[] {
   const seen = new Set<string>();
   return tiers.filter((t) => (seen.has(t.model) ? false : (seen.add(t.model), true)));
 }
 
-// Resolves the key for a given tier index: that tier's own configured key, else the nearest
-// EARLIER tier's key that was configured (so an unconfigured later tier reuses the previous tier's
-// project rather than going unkeyed), else AI_API_KEY as the last resort (this project's own
-// generic var name, kept for backward compatibility with a single-key setup).
-function resolveGeminiApiKey(tierIndex: number): string {
+// Pure version of the tier/fallback-key resolution logic, parameterized over an explicit tiers
+// array and fallback keys instead of reading module-level GEMINI_TIERS/process.env directly —
+// this is what's actually unit-tested. resolveGeminiApiKey() below is the thin real-usage wrapper
+// that supplies the module's real GEMINI_TIERS/env values, kept separate so production code
+// doesn't have to thread those through every call site.
+export function resolveGeminiApiKeyFrom(
+  tiers: GeminiTier[],
+  tierIndex: number,
+  fallbackKeys: { geminiApiKey: string | undefined; aiApiKey: string | undefined },
+): string {
   for (let i = tierIndex; i >= 0; i--) {
-    const key = GEMINI_TIERS[i]?.apiKey;
+    const key = tiers[i]?.apiKey;
     if (key) return key;
   }
-  const fallback = process.env.GEMINI_API_KEY ?? process.env.AI_API_KEY;
+  const fallback = fallbackKeys.geminiApiKey ?? fallbackKeys.aiApiKey;
   if (!fallback) {
     throw new Error(
       'No API key resolves for this Gemini tier (checked AI_AGENTS_GEMINI_API_KEY[_FALLBACK[_2]], ' +
@@ -91,6 +100,17 @@ function resolveGeminiApiKey(tierIndex: number): string {
     );
   }
   return fallback;
+}
+
+// Resolves the key for a given tier index: that tier's own configured key, else the nearest
+// EARLIER tier's key that was configured (so an unconfigured later tier reuses the previous tier's
+// project rather than going unkeyed), else AI_API_KEY as the last resort (this project's own
+// generic var name, kept for backward compatibility with a single-key setup).
+function resolveGeminiApiKey(tierIndex: number): string {
+  return resolveGeminiApiKeyFrom(GEMINI_TIERS, tierIndex, {
+    geminiApiKey: process.env.GEMINI_API_KEY,
+    aiApiKey: process.env.AI_API_KEY,
+  });
 }
 
 export interface AgenticProfile {
@@ -128,7 +148,8 @@ export class CliTimeoutError extends Error {
 // ETIMEDOUT case as a plain 'failure' rather than 'timeout' in the usage log, which would make a
 // real timeout invisible in .observability/ai-usage.jsonl's outcome breakdown. Both signals are
 // checked so either shape of "the process didn't finish in time" is classified the same way.
-function isTimeoutError(err: unknown): boolean {
+export function isTimeoutError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
   const e = err as NodeJS.ErrnoException & { killed?: boolean };
   return e.killed === true || e.code === 'ETIMEDOUT';
 }
@@ -137,7 +158,7 @@ function isTimeoutError(err: unknown): boolean {
 // separate metrics call, no estimation from a public price list) — see usage-log.ts's header for
 // why this exists. Only the fields this module actually reads are typed; the CLI's json result has
 // many more (see README/CLAUDE.local.md notes on other fields like subagent_stats, service_tier).
-interface ClaudeJsonResult {
+export interface ClaudeJsonResult {
   total_cost_usd?: number;
   usage?: {
     input_tokens?: number;
@@ -211,7 +232,7 @@ function runClaude(prompt: string, profile: AgenticProfile, caller: string, time
 // produces no captured stdout at all — so a parse failure here only happens if the CLI's JSON
 // shape itself changes. Usage logging is diagnostic, not correctness-critical, so a malformed
 // result degrades to "no usage recorded for this call" rather than failing the whole operation.
-function parseClaudeJson(stdout: string): ClaudeJsonResult | undefined {
+export function parseClaudeJson(stdout: string): ClaudeJsonResult | undefined {
   try {
     return JSON.parse(stdout) as ClaudeJsonResult;
   } catch {
@@ -220,7 +241,7 @@ function parseClaudeJson(stdout: string): ClaudeJsonResult | undefined {
   }
 }
 
-interface GeminiJsonResult {
+export interface GeminiJsonResult {
   response?: string;
   stats?: {
     models?: Record<string, { tokens?: { input?: number; candidates?: number; total?: number } }>;
@@ -289,7 +310,7 @@ function runGemini(prompt: string, tierIndex: number, profile: AgenticProfile, c
   }
 }
 
-function parseGeminiJson(stdout: string): GeminiJsonResult | undefined {
+export function parseGeminiJson(stdout: string): GeminiJsonResult | undefined {
   try {
     return JSON.parse(stdout) as GeminiJsonResult;
   } catch {
