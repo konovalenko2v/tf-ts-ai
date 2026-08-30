@@ -3,6 +3,7 @@ import { execFileSync } from 'child_process';
 import { findRecoveries, findScreenshotForTest } from './find-recoveries';
 import { findByContext, loadHealedCache, renderLocatorExpression } from './cache-lookup';
 import { proposeFixWithAI } from './fix-proposer';
+import { riskTierFor } from './safety-gates';
 
 const SELF_HEAL_CACHE = '.self-heal/healed_locators.json';
 const TARGET_FILE = 'src/ui/pages/practice-form.page.ts';
@@ -147,6 +148,17 @@ async function main(): Promise<void> {
 
   execFileSync('npx', ['tsc', '--noEmit'], { stdio: 'inherit' });
 
+  // Risk tier (see safety-gates.ts): a cache-sourced fix is a locator healwright already
+  // exercised and recorded a strategy/confidence for at runtime; an ai-fallback fix is freshly
+  // generated code with no such evidence, however stable it proves across verify-stability's
+  // repeats. Only the former is eligible for the fully autonomous path — renaming the branch
+  // (before push, so agent-fixer-verify-and-merge's branch-name match is what actually gates
+  // this, not a label or PR-body marker that can drift out of sync with reality) is what decides
+  // whether the merge job's startsWith(head_ref, 'agent-fixer/cache/') ever matches.
+  const riskTier = riskTierFor(applied.map((f) => f.source));
+  const finalBranch = riskTier === 'auto-merge' ? branch.replace(BRANCH_PREFIX, `${BRANCH_PREFIX}cache/`) : branch.replace(BRANCH_PREFIX, `${BRANCH_PREFIX}ai/`);
+  execFileSync('git', ['branch', '-m', finalBranch], { stdio: 'inherit' });
+
   execFileSync('git', ['add', TARGET_FILE], { stdio: 'inherit' });
   execFileSync(
     'git',
@@ -157,7 +169,7 @@ async function main(): Promise<void> {
     ],
     { stdio: 'inherit' },
   );
-  execFileSync('git', ['push', 'origin', branch], { stdio: 'inherit' });
+  execFileSync('git', ['push', 'origin', finalBranch], { stdio: 'inherit' });
   execFileSync(
     'gh',
     [
@@ -177,7 +189,9 @@ async function main(): Promise<void> {
           ? ['', 'Selectors that still need a human:', ...unresolved.map((s) => `- \`${s}\``)]
           : []),
         '',
-        `This PR auto-merges once the affected test(s) pass ${5}x individually and the affected spec file passes ${2}x as a whole (see .github/workflows/regression.yml's agent-fixer-verify-and-merge job) — it is not held for human review before merging. If master's full regression suite fails right after, the merge is auto-reverted and a new issue opens for a human (agent-fixer-rollback job).`,
+        riskTier === 'auto-merge'
+          ? `All fixes in this PR came from the healwright cache (no AI call) — eligible for the fully autonomous path. It auto-merges once the affected test(s) pass ${5}x individually and the affected spec file passes ${2}x as a whole (see .github/workflows/regression.yml's agent-fixer-verify-and-merge job, gated on the \`agent-fixer/cache/\` branch prefix), unless the circuit breaker in that job's history check has tripped. If master's full regression suite fails right after, the merge is auto-reverted and a new issue opens for a human (agent-fixer-rollback job).`
+          : 'At least one fix in this PR came from the AI fallback (locator-medic), not the healwright cache — no runtime evidence backs the replacement, only verify-stability\'s repeated-run evidence that it is *stable*, not that it is *correct*. This PR is held for human review and will NOT auto-merge (branch prefix `agent-fixer/ai/` does not match the auto-merge job\'s trigger).',
         '',
         `See \`${SELF_HEAL_CACHE}\` in this branch for the exact strategy/confidence healwright used to recover the cache-layer fixes at runtime, if closer inspection is needed after the fact — a low-confidence match may be overfit to one page state. locator-medic (AI fallback) fixes have no such record.`,
       ].join('\n'),

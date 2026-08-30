@@ -255,6 +255,10 @@ jobs:
   # already misbehave once. Per the project owner's explicit requirement: every affected test must
   # pass 5 consecutive repeats, AND the whole affected spec file must pass 2 consecutive full runs,
   # before this ever calls `gh pr merge`. See verify-stability.ts for the exact gate.
+  # Only PRs from an 'agent-fixer/cache/' branch reach this job at all — run.ts routes there ONLY
+  # when every fix in the PR came from the healwright cache (a runtime-recorded strategy), never
+  # when any fix came from the AI fallback (freshly generated code with no such evidence). An
+  # 'agent-fixer/ai/' branch simply never matches this trigger and stays a normal PR for a human.
   agent-fixer-verify-and-merge:
     # Unlike the `test` job's own always()-based continue-on-error reasoning (an unrelated api
     # flake shouldn't block a human-facing report), this gate guards an UNREVIEWED merge to
@@ -262,7 +266,7 @@ jobs:
     if: |
       needs.test.result == 'success' &&
       github.event_name == 'pull_request' &&
-      startsWith(github.head_ref, 'agent-fixer/')
+      startsWith(github.head_ref, 'agent-fixer/cache/')
     needs: test
     runs-on: ubuntu-latest
     permissions:
@@ -283,10 +287,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Circuit breaker: a count of recent auto-merges alone doesn't catch "fixing the same thing
+      # over and over" — any REVERTED agent-fixer commit in the window trips it immediately,
+      # regardless of count, since a revert is direct evidence the last autonomous merge was wrong.
+      # Deliberately does not exit nonzero on trip: that would be indistinguishable from a
+      # stability failure to a human skimming the job list, but "autonomy suspended, needs a human
+      # look" is a different condition than "this specific fix is unstable."
+      - name: Circuit breaker (recent auto-merge history)
+        id: breaker
+        run: npm run agent-fixer:circuit-breaker
+
+      - name: Hold PR open — circuit breaker tripped
+        if: steps.breaker.outputs.tripped == 'true'
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" --body "🛑 Auto-merge held: ${{ steps.breaker.outputs.reason }}"
+        env:
+          GH_TOKEN: ${{ secrets.FIXER_PAT }}
+
       - name: Install Playwright browsers
+        if: steps.breaker.outputs.tripped != 'true'
         run: npx playwright install --with-deps chromium
 
       - name: Verify stability (5x per test, 2x per suite)
+        if: steps.breaker.outputs.tripped != 'true'
         run: npm run agent-fixer:verify-stability
         env:
           BOOKER_USERNAME: ${{ vars.BOOKER_USERNAME }}
@@ -297,11 +320,12 @@ jobs:
           AI_MODEL: 'gemini-3.6-flash'
           AI_MODEL_FALLBACK: 'gemini-3.5-flash'
 
-      # Only reached if verify-stability exited 0 — a failing step above stops the job here via
-      # GitHub Actions' default fail-fast behavior, so this line is never reached on an unstable
-      # fix. --squash keeps master's history to one commit per fixer PR, matching how a human
-      # reviewer would normally land a small locator fix.
+      # Only reached if the breaker is clear AND verify-stability exited 0 — a failing step above
+      # stops the job here via GitHub Actions' default fail-fast behavior, so this line is never
+      # reached on an unstable fix or a suspended-autonomy window. --squash keeps master's history
+      # to one commit per fixer PR, matching how a human reviewer would normally land a small fix.
       - name: Auto-merge (stable across all repeats)
+        if: steps.breaker.outputs.tripped != 'true'
         run: gh pr merge --squash --delete-branch "${{ github.event.pull_request.number }}"
         env:
           GH_TOKEN: ${{ secrets.FIXER_PAT }}

@@ -15,9 +15,16 @@
 
 import { execFileSync } from 'child_process';
 import { getAffectedSpecs } from '../test-selection/affected-tests';
+import { isWithinAllowedScope } from './safety-gates';
 
 const REPEAT_EACH_TEST = 5;
 const REPEAT_WHOLE_SUITE = 2;
+
+// Scope limit (point 4 of the autonomy/safety plan): agent-fixer must only ever touch its
+// declared target file(s). If the branch's diff against base touches anything else — a config
+// file, a workflow, a dependency bump — that's either a bug in agent-fixer or a tampered branch,
+// and this gate refuses to bless it for auto-merge either way, before ever running a single test.
+const ALLOWED_FILES = ['src/ui/pages/practice-form.page.ts'];
 
 function runPlaywright(specs: string[], args: string[]): boolean {
   try {
@@ -30,7 +37,7 @@ function runPlaywright(specs: string[], args: string[]): boolean {
 
 function main(): void {
   const baseRef = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'master';
-  const { specs, runAll } = getAffectedSpecs(baseRef);
+  const { specs, runAll, changedFiles } = getAffectedSpecs(baseRef);
 
   if (runAll || specs.length === 0) {
     // agent-fixer only ever touches src/ui/pages/practice-form.page.ts (see run.ts's TARGET_FILE),
@@ -45,6 +52,14 @@ function main(): void {
   }
 
   process.stderr.write(`[verify-stability] affected spec(s): ${specs.join(', ')}\n`);
+
+  if (!isWithinAllowedScope(changedFiles, ALLOWED_FILES)) {
+    process.stderr.write(
+      `[verify-stability] FAILED — branch touches file(s) outside the allowed auto-merge scope (${ALLOWED_FILES.join(', ')}): ${changedFiles.join(', ')}\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   process.stderr.write(`[verify-stability] step 1/2: each test must pass ${REPEAT_EACH_TEST} consecutive times (--repeat-each)\n`);
   if (!runPlaywright(specs, ['--repeat-each', String(REPEAT_EACH_TEST), '--retries=0'])) {
