@@ -45,9 +45,14 @@ export function proposeFixWithAI(
   // agent-fixer's fallback needs shell access for `npx tsc --noEmit`, beyond cli-fallback's
   // DEFAULT_PROFILE — pass an explicit profile that adds it for the Gemini tiers only (the
   // Claude tier already includes Bash implicitly via its own allowedTools).
-  runAgenticEdit(prompt, {
-    geminiAllowedTools: 'read_file,write_file,edit,glob,grep,run_shell_command',
-    claudeAllowedTools: 'Read,Write,Edit,Glob,Grep,Bash(npx tsc --noEmit)',
-    claudePermissionMode: 'acceptEdits',
-  });
+  runAgenticEdit(
+    prompt,
+    {
+      geminiAllowedTools: 'read_file,write_file,edit,glob,grep,run_shell_command',
+      claudeAllowedTools: 'Read,Write,Edit,Glob,Grep,Bash(npx tsc --noEmit)',
+      claudePermissionMode: 'acceptEdits',
+    },
+    undefined,
+    'agent-fixer',
+  );
 }

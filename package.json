@@ -18,7 +18,9 @@
     "test-evolution": "tsx src/test-evolution/run.ts",
     "goal-evolution": "tsx src/goal-evolution/run.ts",
     "jira-triage": "tsx src/jira-triage/run.ts",
-    "qa-analyst": "tsx src/ai-agents/qa-analyst.ts"
+    "qa-analyst": "tsx src/ai-agents/qa-analyst.ts",
+    "ai-usage-report": "tsx src/ai-agents/usage-report.ts",
+    "agent-fixer:verify-stability": "tsx src/agent-fixer/verify-stability.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

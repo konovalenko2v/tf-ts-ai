@@ -59,5 +59,5 @@ function buildPrompt<TCtx>(goal: Goal<TCtx>): string {
 }
 
 export function proposeDriver<TCtx>(goal: Goal<TCtx>, timeoutMs?: number): void {
-  runAgenticEdit(buildPrompt(goal), undefined, timeoutMs);
+  runAgenticEdit(buildPrompt(goal), undefined, timeoutMs, 'goal-evolution');
 }

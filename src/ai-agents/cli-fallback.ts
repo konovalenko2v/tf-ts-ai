@@ -32,9 +32,20 @@
 // reasoning as reviewer-tests.ts's requireProfileVar.
 
 import { execFileSync } from 'child_process';
+import { recordAiUsage } from './usage-log';
 
 const CLAUDE_MODEL = process.env.AI_AGENTS_CLAUDE_TIER ?? 'sonnet'; // Sonnet 5 by default
 const CLAUDE_EFFORT = process.env.AI_AGENTS_CLAUDE_EFFORT ?? 'medium';
+
+// Same 5-minute default goal-evolution/run.ts's own ATTEMPT_TIMEOUT_MS already uses for a single
+// Claude generation attempt — reused here as the project's one standard "how long is one AI CLI
+// call allowed to run" figure, rather than inventing a second number. Previously the Gemini tiers
+// had NO timeout at all (only the caller-supplied timeoutMs applied to the Claude tier), so a
+// hung `gemini` CLI process — confirmed to happen live: see CLAUDE.local.md's session notes on a
+// tier that sat at 0% CPU for minutes mid-retry — blocked the entire fallback chain indefinitely.
+// Configurable via AI_AGENTS_GEMINI_TIMEOUT_MS for a slower/faster environment; not tied to the
+// caller's own timeoutMs param (that one is Claude-attempt-specific and optional).
+const GEMINI_TIMEOUT_MS = Number(process.env.AI_AGENTS_GEMINI_TIMEOUT_MS) || 5 * 60 * 1000;
 
 interface GeminiTier {
   model: string;
@@ -108,9 +119,44 @@ export class CliTimeoutError extends Error {
   }
 }
 
-function runClaude(prompt: string, profile: AgenticProfile, timeoutMs?: number): void {
+// execFileSync's `timeout` option surfaces a killed child TWO different ways depending on how
+// close the process got to actually starting before the deadline hit — confirmed by live testing
+// (not just reading Node's docs): a short-enough timeout throws an error with `code: 'ETIMEDOUT'`
+// and no `killed` flag at all (the child never got far enough to be meaningfully "killed"), while
+// a timeout that fires after the child is genuinely running sets `killed: true` (with SIGTERM).
+// Checking only `killed` — the original implementation here — silently mis-recorded the
+// ETIMEDOUT case as a plain 'failure' rather than 'timeout' in the usage log, which would make a
+// real timeout invisible in .observability/ai-usage.jsonl's outcome breakdown. Both signals are
+// checked so either shape of "the process didn't finish in time" is classified the same way.
+function isTimeoutError(err: unknown): boolean {
+  const e = err as NodeJS.ErrnoException & { killed?: boolean };
+  return e.killed === true || e.code === 'ETIMEDOUT';
+}
+
+// Claude CLI's --output-format json result line carries usage/total_cost_usd directly (no
+// separate metrics call, no estimation from a public price list) — see usage-log.ts's header for
+// why this exists. Only the fields this module actually reads are typed; the CLI's json result has
+// many more (see README/CLAUDE.local.md notes on other fields like subagent_stats, service_tier).
+interface ClaudeJsonResult {
+  total_cost_usd?: number;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
+  result?: string;
+}
+
+function runClaude(prompt: string, profile: AgenticProfile, caller: string, timeoutMs?: number): void {
+  const startedAt = Date.now();
+  let stdout = '';
   try {
-    execFileSync(
+    // Captured via 'pipe' (not 'inherit') specifically so the --output-format json result line can
+    // be parsed for usage/cost — see the ClaudeJsonResult comment. The result's own `result` field
+    // (the model's final text reply) is echoed to stdout below so a live run still shows output on
+    // the terminal, same as 'inherit' did before this change.
+    stdout = execFileSync(
       'claude',
       [
         '-p',
@@ -123,48 +169,156 @@ function runClaude(prompt: string, profile: AgenticProfile, timeoutMs?: number):
         profile.claudePermissionMode,
         '--allowedTools',
         profile.claudeAllowedTools,
+        '--output-format',
+        'json',
       ],
-      { stdio: 'inherit', timeout: timeoutMs },
+      { stdio: ['inherit', 'pipe', 'inherit'], timeout: timeoutMs, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 },
     );
+    const parsed = parseClaudeJson(stdout);
+    if (parsed?.result) process.stdout.write(parsed.result + '\n');
+    recordAiUsage({
+      caller,
+      provider: 'claude',
+      model: CLAUDE_MODEL,
+      tierIndex: 0,
+      outcome: 'success',
+      durationMs: Date.now() - startedAt,
+      inputTokens: parsed?.usage?.input_tokens,
+      outputTokens: parsed?.usage?.output_tokens,
+      cacheCreationInputTokens: parsed?.usage?.cache_creation_input_tokens,
+      cacheReadInputTokens: parsed?.usage?.cache_read_input_tokens,
+      costUsd: parsed?.total_cost_usd,
+    });
   } catch (err) {
-    // Node sets `killed: true` (and signal SIGTERM) when `timeout` fired, as opposed to the
-    // child exiting nonzero on its own — see the CliTimeoutError doc comment for why this
-    // distinction has to survive past this function.
-    if (timeoutMs && (err as NodeJS.ErrnoException & { killed?: boolean }).killed) {
-      throw new CliTimeoutError(`claude (${CLAUDE_MODEL}, effort ${CLAUDE_EFFORT})`, timeoutMs);
+    const isTimeout = !!timeoutMs && isTimeoutError(err);
+    recordAiUsage({
+      caller,
+      provider: 'claude',
+      model: CLAUDE_MODEL,
+      tierIndex: 0,
+      outcome: isTimeout ? 'timeout' : 'failure',
+      durationMs: Date.now() - startedAt,
+      failureReason: (err as Error).message?.split('\n')[0],
+    });
+    if (isTimeout) {
+      throw new CliTimeoutError(`claude (${CLAUDE_MODEL}, effort ${CLAUDE_EFFORT})`, timeoutMs as number);
     }
     throw err;
   }
 }
 
-function runGemini(prompt: string, tierIndex: number, profile: AgenticProfile): void {
+// execFileSync throws on a nonzero exit before this ever runs, and a killed-by-timeout process
+// produces no captured stdout at all — so a parse failure here only happens if the CLI's JSON
+// shape itself changes. Usage logging is diagnostic, not correctness-critical, so a malformed
+// result degrades to "no usage recorded for this call" rather than failing the whole operation.
+function parseClaudeJson(stdout: string): ClaudeJsonResult | undefined {
+  try {
+    return JSON.parse(stdout) as ClaudeJsonResult;
+  } catch {
+    process.stderr.write('[cli-fallback] could not parse Claude CLI JSON output — usage not recorded for this call\n');
+    return undefined;
+  }
+}
+
+interface GeminiJsonResult {
+  response?: string;
+  stats?: {
+    models?: Record<string, { tokens?: { input?: number; candidates?: number; total?: number } }>;
+  };
+}
+
+function runGemini(prompt: string, tierIndex: number, profile: AgenticProfile, caller: string): void {
   const { model } = GEMINI_TIERS[tierIndex];
   const apiKey = resolveGeminiApiKey(tierIndex);
-  execFileSync(
-    'gemini',
-    ['-p', prompt, '-m', model, '--approval-mode', 'auto_edit', '--skip-trust', '--allowed-tools', profile.geminiAllowedTools],
-    // execFileSync's `env` REPLACES the child's environment rather than merging — spread
-    // process.env first or the child loses PATH/HOME and fails in ways that look nothing like an
-    // auth problem. GEMINI_API_KEY is set explicitly (not just relied on via inheritance) because
-    // this project's own var name is AI_API_KEY, which the gemini CLI does not recognize on its
-    // own — see the header comment for what silently broke before this was added.
-    { stdio: 'inherit', env: { ...process.env, GEMINI_API_KEY: apiKey } },
-  );
+  const startedAt = Date.now();
+  let stdout = '';
+  try {
+    stdout = execFileSync(
+      'gemini',
+      ['-p', prompt, '-m', model, '--approval-mode', 'auto_edit', '--skip-trust', '--allowed-tools', profile.geminiAllowedTools, '-o', 'json'],
+      // execFileSync's `env` REPLACES the child's environment rather than merging — spread
+      // process.env first or the child loses PATH/HOME and fails in ways that look nothing like an
+      // auth problem. GEMINI_API_KEY is set explicitly (not just relied on via inheritance) because
+      // this project's own var name is AI_API_KEY, which the gemini CLI does not recognize on its
+      // own — see the header comment for what silently broke before this was added.
+      {
+        stdio: ['inherit', 'pipe', 'inherit'],
+        env: { ...process.env, GEMINI_API_KEY: apiKey },
+        encoding: 'utf-8',
+        maxBuffer: 64 * 1024 * 1024,
+        timeout: GEMINI_TIMEOUT_MS,
+      },
+    );
+    const parsed = parseGeminiJson(stdout);
+    if (parsed?.response) process.stdout.write(parsed.response + '\n');
+    const tokens = parsed?.stats?.models?.[model]?.tokens;
+    recordAiUsage({
+      caller,
+      provider: 'gemini',
+      model,
+      tierIndex: tierIndex + 1, // tier 0 is always the Claude call in the usage log — see recordAiUsage callers
+      outcome: 'success',
+      durationMs: Date.now() - startedAt,
+      inputTokens: tokens?.input,
+      outputTokens: tokens?.candidates,
+      // Gemini's json output reports token counts only, no dollar figure (unlike Claude's
+      // total_cost_usd) — costUsd is deliberately left undefined rather than estimated from an
+      // unverified public price list, per usage-log.ts's field comment.
+    });
+  } catch (err) {
+    // Same isTimeoutError() check the Claude tier's own timeout uses (see runClaude and that
+    // function's doc comment for why both `killed` and `code: 'ETIMEDOUT'` must be checked) — a
+    // hung gemini process gets SIGTERM'd here instead of blocking the fallback chain forever.
+    // Deliberately logged as plain 'timeout' outcome, NOT thrown as CliTimeoutError: that class's
+    // whole contract (see its doc comment) is "re-thrown immediately, never falls through to the
+    // Gemini tiers" — which only makes sense for the Claude tier deciding whether to fall through
+    // TO Gemini. A Gemini tier timing out should behave exactly like any other Gemini tier
+    // failure: move on to the next tier, or exhaust the chain — not propagate a Claude-specific
+    // signal type past this function.
+    const isTimeout = isTimeoutError(err);
+    recordAiUsage({
+      caller,
+      provider: 'gemini',
+      model,
+      tierIndex: tierIndex + 1,
+      outcome: isTimeout ? 'timeout' : 'failure',
+      durationMs: Date.now() - startedAt,
+      failureReason: isTimeout ? `did not finish within ${GEMINI_TIMEOUT_MS}ms` : (err as Error).message?.split('\n')[0],
+    });
+    throw err;
+  }
+}
+
+function parseGeminiJson(stdout: string): GeminiJsonResult | undefined {
+  try {
+    return JSON.parse(stdout) as GeminiJsonResult;
+  } catch {
+    process.stderr.write('[cli-fallback] could not parse Gemini CLI JSON output — usage not recorded for this call\n');
+    return undefined;
+  }
 }
 
 // Tries Claude (Sonnet 5, middle effort) first, then each Gemini tier in GEMINI_TIERS order —
-// each tier only reached when the previous one throws. stdio: 'inherit' keeps live CLI output on
-// the terminal, which means failures are detected by exit code alone, not parsed for a specific
-// error (e.g. 429) — any nonzero exit moves to the next tier.
+// each tier only reached when the previous one throws. Output is captured (not streamed live)
+// so usage/cost can be parsed from each CLI's --output-format json result — see runClaude/
+// runGemini — with the model's final text reply re-printed to stdout so a live run still shows
+// output on the terminal.
 //
-// timeoutMs is optional and Claude-tier only (deliberately not applied to the Gemini tiers —
-// those already only run after Claude already spent up to timeoutMs, and this fallback chain
-// exists for auth/quota/outage, not for bounding total wall-clock across all tiers). A timeout is
-// re-thrown immediately as CliTimeoutError rather than falling through to Gemini — see that
-// class's doc comment.
-export function runAgenticEdit(prompt: string, profile: AgenticProfile = DEFAULT_PROFILE, timeoutMs?: number): void {
+// timeoutMs (caller-supplied, optional) bounds the Claude tier only; Gemini tiers are bounded
+// separately by GEMINI_TIMEOUT_MS (see that constant — a fixed 5-minute default, independent of
+// whatever timeoutMs the caller passed for Claude). Every tier is timeout-bounded now; previously
+// only Claude was, and a hung Gemini CLI blocked the whole chain indefinitely (see GEMINI_TIMEOUT_MS's
+// comment). A Claude-tier timeout is re-thrown immediately as CliTimeoutError rather than falling
+// through to Gemini — see that class's doc comment. A Gemini-tier timeout is NOT a
+// CliTimeoutError — it's treated like any other Gemini failure and simply advances to the next
+// tier (see runGemini's catch block for why the two cases are handled differently).
+// `caller` identifies which module made the call (e.g. 'test-evolution', 'agent-fixer',
+// 'goal-evolution') purely for cost attribution in .observability/ai-usage.jsonl — see
+// usage-log.ts. Defaults to 'unknown' rather than being required, so this stays backward-
+// compatible with any call site that predates cost tracking.
+export function runAgenticEdit(prompt: string, profile: AgenticProfile = DEFAULT_PROFILE, timeoutMs?: number, caller = 'unknown'): void {
   try {
-    runClaude(prompt, profile, timeoutMs);
+    runClaude(prompt, profile, caller, timeoutMs);
     return;
   } catch (err) {
     if (err instanceof CliTimeoutError) throw err;
@@ -175,7 +329,7 @@ export function runAgenticEdit(prompt: string, profile: AgenticProfile = DEFAULT
   for (let i = 0; i < GEMINI_TIERS.length; i++) {
     const { model } = GEMINI_TIERS[i];
     try {
-      runGemini(prompt, i, profile);
+      runGemini(prompt, i, profile, caller);
       return;
     } catch (err) {
       const reason = (err as Error).message.split('\n')[0];

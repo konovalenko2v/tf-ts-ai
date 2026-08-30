@@ -40,5 +40,5 @@ function buildPrompt(referenceFile: string, outputFile: string): string {
 }
 
 export function proposeTest(referenceFile: string, outputFile: string): void {
-  runAgenticEdit(buildPrompt(referenceFile, outputFile));
+  runAgenticEdit(buildPrompt(referenceFile, outputFile), undefined, undefined, 'test-evolution');
 }
