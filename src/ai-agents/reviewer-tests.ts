@@ -18,6 +18,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
+import { parseClaudeJson } from './cli-fallback';
+import { recordAiUsage } from './usage-log';
 
 const PERSONA_FILE = path.join(__dirname, '../../ai-agents/personas/reviewer-tests.md');
 const PROFILE_FILE = path.join(__dirname, '../../ai-agents/profiles/paranoid.env');
@@ -93,11 +95,71 @@ export async function reviewGeneratedTest(testFilePath: string, referenceFilePat
   ].join('\n');
 
   // Read-only tools only — reviewer-tests must never edit the file it's reviewing.
-  const text = execFileSync(
-    'claude',
-    ['-p', prompt, '--model', REVIEW_CLAUDE_TIER, '--effort', REVIEW_CLAUDE_EFFORT, '--permission-mode', 'plan', '--allowedTools', 'Read,Grep,Glob'],
-    { encoding: 'utf-8' },
-  );
+  // --output-format json (piped, not inherited) so cost/token usage can be recorded via
+  // recordAiUsage — this was previously the one AI call site the cost tracker couldn't see, since
+  // it went through 'inherit'-mode execFileSync with no JSON result line to parse. See
+  // cli-fallback.ts's runClaude for the identical parse-then-record pattern this mirrors.
+  const startedAt = Date.now();
+  let stdout: string;
+  try {
+    stdout = execFileSync(
+      'claude',
+      [
+        '-p',
+        prompt,
+        '--model',
+        REVIEW_CLAUDE_TIER,
+        '--effort',
+        REVIEW_CLAUDE_EFFORT,
+        '--permission-mode',
+        'plan',
+        '--allowedTools',
+        'Read,Grep,Glob',
+        '--output-format',
+        'json',
+      ],
+      { encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 },
+    );
+  } catch (err) {
+    recordAiUsage({
+      caller: 'reviewer-tests',
+      provider: 'claude',
+      model: REVIEW_CLAUDE_TIER,
+      tierIndex: 0,
+      outcome: 'failure',
+      durationMs: Date.now() - startedAt,
+      failureReason: (err as Error).message?.split('\n')[0],
+    });
+    throw err;
+  }
+
+  const parsed = parseClaudeJson(stdout);
+  recordAiUsage({
+    caller: 'reviewer-tests',
+    provider: 'claude',
+    model: REVIEW_CLAUDE_TIER,
+    tierIndex: 0,
+    outcome: 'success',
+    durationMs: Date.now() - startedAt,
+    inputTokens: parsed?.usage?.input_tokens,
+    outputTokens: parsed?.usage?.output_tokens,
+    cacheCreationInputTokens: parsed?.usage?.cache_creation_input_tokens,
+    cacheReadInputTokens: parsed?.usage?.cache_read_input_tokens,
+    costUsd: parsed?.total_cost_usd,
+  });
+
+  // Echo the model's reply to stdout, same as before this switched to --output-format json (which
+  // captures stdout via 'pipe' to get the JSON result line, so nothing reaches the terminal on its
+  // own anymore) — mirrors cli-fallback.ts's runClaude doing the same for the identical reason.
+  if (parsed?.result) process.stdout.write(parsed.result + '\n');
+
+  // If parsing failed, cite the raw stdout (not the now-empty parsed text) so the error still
+  // carries something to debug from — parseClaudeJson already logged its own parse-failure line.
+  if (!parsed) {
+    throw new Error(`Could not parse claude's --output-format json response: ${stdout}`);
+  }
+
+  const text = parsed.result ?? '';
 
   const verdictMatch = text.match(/VERDICT:\s*(YES|NO)/i);
   if (!verdictMatch) {

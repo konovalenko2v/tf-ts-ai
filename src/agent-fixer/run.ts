@@ -3,10 +3,14 @@ import { execFileSync } from 'child_process';
 import { findRecoveries, findScreenshotForTest } from './find-recoveries';
 import { findByContext, loadHealedCache, renderLocatorExpression } from './cache-lookup';
 import { proposeFixWithAI } from './fix-proposer';
-import { riskTierFor } from './safety-gates';
+import { riskTierFor, branchFor, ALLOWED_TARGET_FILES } from './safety-gates';
 
 const SELF_HEAL_CACHE = '.self-heal/healed_locators.json';
-const TARGET_FILE = 'src/ui/pages/practice-form.page.ts';
+// run.ts itself only ever edits one file, by construction (locateInSource reads/writes TARGET_FILE
+// only) — ALLOWED_TARGET_FILES is an array because verify-stability's scope gate is written to
+// generalize to more than one, but adding a second entry there would silently do nothing here
+// unless this file is also updated to loop over multiple targets.
+const TARGET_FILE = ALLOWED_TARGET_FILES[0];
 const BRANCH_PREFIX = 'agent-fixer/';
 const SKIP_MARKER = 'agent-fixer: skip';
 
@@ -154,9 +158,10 @@ async function main(): Promise<void> {
   // repeats. Only the former is eligible for the fully autonomous path — renaming the branch
   // (before push, so agent-fixer-verify-and-merge's branch-name match is what actually gates
   // this, not a label or PR-body marker that can drift out of sync with reality) is what decides
-  // whether the merge job's startsWith(head_ref, 'agent-fixer/cache/') ever matches.
+  // whether the merge job's branch-name match ever fires. branchFor() (not a literal built here)
+  // is what keeps this in sync with regression.yml's own prefix — see that function's comment.
   const riskTier = riskTierFor(applied.map((f) => f.source));
-  const finalBranch = riskTier === 'auto-merge' ? branch.replace(BRANCH_PREFIX, `${BRANCH_PREFIX}cache/`) : branch.replace(BRANCH_PREFIX, `${BRANCH_PREFIX}ai/`);
+  const finalBranch = branchFor(riskTier, branch.replace(BRANCH_PREFIX, ''));
   execFileSync('git', ['branch', '-m', finalBranch], { stdio: 'inherit' });
 
   execFileSync('git', ['add', TARGET_FILE], { stdio: 'inherit' });

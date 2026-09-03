@@ -14,17 +14,11 @@
 // practice-form.page.ts.
 
 import { execFileSync } from 'child_process';
-import { getAffectedSpecs } from '../test-selection/affected-tests';
-import { isWithinAllowedScope } from './safety-gates';
+import { getAffectedSpecs, AffectedResult } from '../test-selection/affected-tests';
+import { isWithinAllowedScope, ALLOWED_TARGET_FILES } from './safety-gates';
 
-const REPEAT_EACH_TEST = 5;
-const REPEAT_WHOLE_SUITE = 2;
-
-// Scope limit (point 4 of the autonomy/safety plan): agent-fixer must only ever touch its
-// declared target file(s). If the branch's diff against base touches anything else — a config
-// file, a workflow, a dependency bump — that's either a bug in agent-fixer or a tampered branch,
-// and this gate refuses to bless it for auto-merge either way, before ever running a single test.
-const ALLOWED_FILES = ['src/ui/pages/practice-form.page.ts'];
+export const REPEAT_EACH_TEST = 5;
+export const REPEAT_WHOLE_SUITE = 2;
 
 function runPlaywright(specs: string[], args: string[]): boolean {
   try {
@@ -35,50 +29,72 @@ function runPlaywright(specs: string[], args: string[]): boolean {
   }
 }
 
-function main(): void {
-  const baseRef = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'master';
-  const { specs, runAll, changedFiles } = getAffectedSpecs(baseRef);
+export interface StabilityVerdict {
+  passed: boolean;
+  reason: string;
+}
 
+// The gate's decision logic, isolated from the actual subprocess calls: takes an already-resolved
+// AffectedResult plus an injected `runner` (real signature matches runPlaywright above) so a test
+// can assert on the exact argv sequence a real run would produce — order and flags included —
+// without spawning Playwright. main() below is the only caller that wires in the real
+// getAffectedSpecs/runPlaywright pair.
+export function evaluateStability(
+  { specs, runAll, changedFiles }: AffectedResult,
+  runner: (specs: string[], args: string[]) => boolean,
+): StabilityVerdict {
   if (runAll || specs.length === 0) {
-    // agent-fixer only ever touches src/ui/pages/practice-form.page.ts (see run.ts's TARGET_FILE),
-    // so this branch is a defensive fallback, not an expected path — but if it's ever reached,
-    // "no affected specs found" means there's nothing to stability-check, and "run everything"
-    // means the whole suite already stands in for both individual-test and suite-level repeats
-    // via the existing full-suite CI run — neither case is a stability gate this script should
-    // silently pass, so both fail loud rather than merging on no evidence.
-    process.stderr.write(`[verify-stability] expected a scoped set of affected specs for an agent-fixer branch, got runAll=${runAll} specs=${specs.length} — refusing to auto-merge on unclear affected-test scope\n`);
-    process.exitCode = 1;
-    return;
+    // agent-fixer only ever touches ALLOWED_TARGET_FILES (see run.ts's TARGET_FILE), so this
+    // branch is a defensive fallback, not an expected path — but if it's ever reached, "no
+    // affected specs found" means there's nothing to stability-check, and "run everything" means
+    // the whole suite already stands in for both individual-test and suite-level repeats via the
+    // existing full-suite CI run — neither case is a stability gate this script should silently
+    // pass, so both fail loud rather than merging on no evidence.
+    return {
+      passed: false,
+      reason: `expected a scoped set of affected specs for an agent-fixer branch, got runAll=${runAll} specs=${specs.length} — refusing to auto-merge on unclear affected-test scope`,
+    };
   }
 
-  process.stderr.write(`[verify-stability] affected spec(s): ${specs.join(', ')}\n`);
-
-  if (!isWithinAllowedScope(changedFiles, ALLOWED_FILES)) {
-    process.stderr.write(
-      `[verify-stability] FAILED — branch touches file(s) outside the allowed auto-merge scope (${ALLOWED_FILES.join(', ')}): ${changedFiles.join(', ')}\n`,
-    );
-    process.exitCode = 1;
-    return;
+  // Scope limit (point 4 of the autonomy/safety plan): agent-fixer must only ever touch its
+  // declared target file(s). Checked before any Playwright process runs — a tampered/out-of-scope
+  // branch must never get as far as having its tests run, let alone pass.
+  if (!isWithinAllowedScope(changedFiles, ALLOWED_TARGET_FILES)) {
+    return {
+      passed: false,
+      reason: `FAILED — branch touches file(s) outside the allowed auto-merge scope (${ALLOWED_TARGET_FILES.join(', ')}): ${changedFiles.join(', ')}`,
+    };
   }
 
-  process.stderr.write(`[verify-stability] step 1/2: each test must pass ${REPEAT_EACH_TEST} consecutive times (--repeat-each)\n`);
-  if (!runPlaywright(specs, ['--repeat-each', String(REPEAT_EACH_TEST), '--retries=0'])) {
-    process.stderr.write(`[verify-stability] FAILED — at least one test did not pass all ${REPEAT_EACH_TEST} repeats\n`);
-    process.exitCode = 1;
-    return;
+  // --retries=0 on every invocation is load-bearing: Playwright's own config-level retries would
+  // let a flaky healed locator pass on a later attempt, making this repeat-based gate decorative.
+  if (!runner(specs, ['--repeat-each', String(REPEAT_EACH_TEST), '--retries=0'])) {
+    return { passed: false, reason: `FAILED — at least one test did not pass all ${REPEAT_EACH_TEST} repeats` };
   }
 
-  process.stderr.write(`[verify-stability] step 2/2: the whole affected spec file must pass ${REPEAT_WHOLE_SUITE} consecutive full runs\n`);
   for (let run = 1; run <= REPEAT_WHOLE_SUITE; run++) {
-    process.stderr.write(`[verify-stability]   suite run ${run}/${REPEAT_WHOLE_SUITE}\n`);
-    if (!runPlaywright(specs, ['--retries=0'])) {
-      process.stderr.write(`[verify-stability] FAILED — suite run ${run}/${REPEAT_WHOLE_SUITE} did not pass\n`);
-      process.exitCode = 1;
-      return;
+    if (!runner(specs, ['--retries=0'])) {
+      return { passed: false, reason: `FAILED — suite run ${run}/${REPEAT_WHOLE_SUITE} did not pass` };
     }
   }
 
-  process.stderr.write('[verify-stability] PASSED — stable across all repeats, safe to auto-merge\n');
+  return { passed: true, reason: 'PASSED — stable across all repeats, safe to auto-merge' };
 }
 
-main();
+function main(): void {
+  const baseRef = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'master';
+  const result = getAffectedSpecs(baseRef);
+  process.stderr.write(`[verify-stability] affected spec(s): ${result.specs.join(', ')}\n`);
+  process.stderr.write(`[verify-stability] step 1/2: each test must pass ${REPEAT_EACH_TEST} consecutive times (--repeat-each)\n`);
+
+  const verdict = evaluateStability(result, runPlaywright);
+
+  process.stderr.write(`[verify-stability] ${verdict.reason}\n`);
+  if (!verdict.passed) process.exitCode = 1;
+}
+
+// Guards against running real subprocesses / touching process.exitCode when this module is
+// imported from a test rather than run directly via `npm run agent-fixer:verify-stability`.
+if (require.main === module) {
+  main();
+}

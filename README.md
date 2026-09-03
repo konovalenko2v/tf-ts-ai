@@ -237,6 +237,26 @@ fixer PR can never spawn another fixer run.
 > why `test` keeps its default `contents: read` permission and only the `agent-fixer` job carries
 > `contents: write`/`pull-requests: write`.
 
+### Risk-tiered auto-merge, circuit breaker, rollback
+
+A fix sourced from the healwright cache (deterministic, runtime-recorded strategy) is eligible for a fully
+autonomous path; a fix sourced from the AI fallback (freshly generated code, no runtime evidence) is always held
+for human review — decided in `safety-gates.ts`'s `riskTierFor`/`branchFor` and enforced by the pushed branch's
+name prefix (`agent-fixer/cache/*` vs `agent-fixer/ai/*`), which is what `regression.yml`'s
+`agent-fixer-verify-and-merge` job's trigger actually matches on — see `tests/unit/safety-gates.spec.ts`'s
+branch-prefix-agreement tests for the guard keeping the two files in sync. The cache-tier path only merges after
+`verify-stability.ts` passes every affected test 5x individually and the affected spec file 2x as a whole, and
+only if a git-history-based circuit breaker (any reverted `agent-fixer:` commit, or too many auto-merges in one
+window) hasn't tripped. A rollback job auto-reverts and opens a human-owned issue if the full master suite goes
+red right after an auto-merge.
+
+> [!NOTE]
+> Status as of this writing: the auto-merge path itself has fired once in production (PR #14, cache-tier,
+> scoped correctly to the one allowed target file). The circuit breaker and rollback job have not yet been
+> exercised by a real trip — no `agent-fixer:` commit has ever needed reverting. Both are covered by unit tests
+> of their decision logic (`safety-gates.spec.ts`, `verify-stability.spec.ts`), not by a live incident, so treat
+> "written and tested in isolation" and "proven under a real failure" as two different claims until one trips.
+
 ## 4. Failure Analysis
 
 `src/failure-analysis/` groups failed tests by a normalized error signature into one of five causes — `config`,
