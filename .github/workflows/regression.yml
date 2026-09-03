@@ -60,6 +60,21 @@ jobs:
           AI_MODEL: 'gemini-3.6-flash'
           AI_MODEL_FALLBACK: 'gemini-3.5-flash'
 
+      # Informational only, not a merge gate — c8/V8 coverage over the unit project only (the
+      # only project with in-repo src/ code to instrument; api/graphql/ui exercise external
+      # services, not this codebase). Runs regardless of the earlier test outcome so a PR still
+      # gets a coverage number even when an unrelated api/ui test in the same run is red.
+      - name: Coverage report (unit)
+        if: always()
+        run: |
+          npm run coverage 2>&1 | tee coverage-output.txt
+          {
+            echo "## Test coverage (unit)"
+            echo '```'
+            tail -n 20 coverage-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Failure analysis
         if: always()
         run: npm run failure-analysis

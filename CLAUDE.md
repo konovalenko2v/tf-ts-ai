@@ -34,6 +34,7 @@ Personas on disk: `qa-analyst`, `test-developer`, `locator-medic`, `reviewer-tes
 npm test                       # full suite (api + graphql + ui projects)
 npm run test:api / :graphql / :ui
 npm run test:affected          # only specs a local diff can affect (vs master / origin/<base>)
+npm run coverage               # c8 statement/branch coverage over the unit project (informational, not a gate)
 npm run report                 # Playwright HTML report
 npm run allure:generate / allure:serve
 

@@ -8,6 +8,7 @@ export const config = {
   textBoxHost: 'https://demoqa.com/text-box',
   checkBoxHost: 'https://demoqa.com/checkbox',
   buttonsHost: 'https://demoqa.com/buttons',
+  webTablesHost: 'https://demoqa.com/webtables',
   bookStoreHost: 'https://demoqa.com',
   gqlHost: 'https://eu-central-1-shared-euc1-02.cdn.hygraph.com/content/clv6lwqu7000001w690st4vix/master',
 };

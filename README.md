@@ -83,8 +83,8 @@ src/
 ├── graphql/              GraphQlClient (Hygraph)
 ├── ui/
 │   ├── fixtures.ts        healwright-wrapped `test`/`page` (HealPage), AI model fallback
-│   ├── pages/              PracticeFormPage, TextBoxPage, CheckBoxPage (Playwright Page objects)
-│   └── steps/               ForumSteps, TextBoxSteps, CheckBoxSteps — test.step() wrappers
+│   ├── pages/              PracticeFormPage, TextBoxPage, CheckBoxPage, WebTablesPage (Playwright Page objects)
+│   └── steps/               ForumSteps, TextBoxSteps, CheckBoxSteps, WebTablesSteps — test.step() wrappers
 ├── observability/        custom Playwright Reporter — JSONL event log (#2)
 ├── agent-fixer/           cache-lookup + AI-fallback fix proposer, opens a PR (#3)
 ├── failure-analysis/       groups failures by cause, retry verdicts, healed-test visibility (#4)
@@ -96,7 +96,7 @@ src/
 tests/
 ├── api/                  auth.spec.ts, booking-crud.spec.ts, negative.spec.ts, book-store-goal.spec.ts (+ test-evolution output)
 ├── graphql/               positive.spec.ts, negative.spec.ts
-└── ui/                    forum.spec.ts, text-box.spec.ts, check-box.spec.ts, buttons-goal.spec.ts
+└── ui/                    forum.spec.ts, text-box.spec.ts, check-box.spec.ts, buttons-goal.spec.ts, web-tables.spec.ts
 docs/
 └── page-knowledge/       one markdown file per DemoQA page under test (#9)
 ai-agents/
@@ -155,6 +155,18 @@ There is deliberately no stub test designed to fail on its first attempt just to
 report — that would break the "all tests green" guarantee without adding real coverage value. `data: null` in
 GraphQL error-validation responses is real Hygraph API behavior (verified with `curl`), hence the assertion
 `expect(body.data).toBeNull()` rather than `toBeUndefined()`.
+
+### Code coverage
+
+`npm run coverage` runs the `unit` project under [`c8`](https://github.com/bcoe/c8) (V8-native coverage — no
+babel/istanbul instrumentation step, works directly against `tsx`-executed TypeScript) and prints a
+statements/branches/functions/lines table, plus an `lcov` report under `coverage/` (gitignored). Only the `unit`
+project is instrumented: `api`/`graphql`/`ui` exercise external services (restful-booker, Hygraph, demoqa.com) —
+there is no first-party `src/` logic in those runs to hold a coverage number accountable to.
+
+Wired into CI (`regression.yml`'s `test` job) as an informational step that posts the table to the job's step
+summary — it runs on every push/PR (`if: always()`, so an unrelated api/ui flake in the same run doesn't hide it)
+but is not a merge gate: no minimum threshold is enforced.
 
 ---
 

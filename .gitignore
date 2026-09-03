@@ -9,3 +9,4 @@ allure-report/
 .idea/
 .self-heal/
 .observability/
+coverage/
