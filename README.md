@@ -168,6 +168,16 @@ Wired into CI (`regression.yml`'s `test` job) as an informational step that post
 summary — it runs on every push/PR (`if: always()`, so an unrelated api/ui flake in the same run doesn't hide it)
 but is not a merge gate: no minimum threshold is enforced.
 
+**Current: ~66% statements/lines, ~76% branches, ~48% functions** — not evenly spread, and not close to a
+number a `--check-coverage` gate could enforce today. `safety-gates.ts` and `classify.ts` sit at 100%;
+`test-selection/affected-tests.ts` (29%) and `observability/reporter.ts`/`sanitize.ts` (40–58%) have no unit
+test of their own — what little of them shows covered is only the side effect of other tested modules
+importing them, or of `reporter.ts` running as a real Playwright reporter during the coverage run itself.
+`cli-fallback.ts`/`gemini-text.ts` sit in the middle (42–58%) because their unit tests deliberately cover only
+pure helpers (`callerFrom`, parsing) and not the live CLI call paths, which cost real API quota to exercise.
+This is the same gap called out in the 2026-09-03 architecture reassessment — `src/` has grown faster than
+its test coverage — now with a number attached instead of a LOC-ratio proxy for it.
+
 ---
 
 ## 1. Self-Healing UI Locators
