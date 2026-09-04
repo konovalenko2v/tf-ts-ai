@@ -289,6 +289,30 @@ bug"). It's a stated policy today, not a dynamic retry-count controller — see 
 It also surfaces tests that only passed because of a silent AI recovery: an `environment.properties` counter on
 the Allure Overview page, plus a per-test tag, so a "self-healed" pass is visibly different from an honest one.
 
+### AI verdict modules (not yet wired into `run.ts`)
+
+Two standalone, callable modules layer an AI verdict on top of the rule-based grouping above — each one call
+per event, via `gemini-text.ts`'s `callGemini`, with its own persona file:
+
+- **`healing-classify.ts`** (`ai-agents/personas/healing-classifier.md`) — takes one `passed_with_recovery`
+  `RecoverySummary` (original locator, failure log, healed locator) and returns `STRUCTURAL` / `TIMING` /
+  `DYNAMIC_ID` plus a suggested action (`PROPOSE_FIX` / `INCREASE_TIMEOUT` / `IGNORE_TEMPORARY_FLAKE`). Answers
+  *why* a locator broke, which `summarizeRecoveries()` above deliberately doesn't — a `TIMING` verdict means the
+  code must NOT change (a `waitFor`/timeout fix instead), so this is meant to gate agent-fixer from "fixing" a
+  locator that was never actually wrong.
+- **`retry-dispatch.ts`** (`ai-agents/personas/retry-dispatcher.md`) — takes one failed `TestSummaryEvent` and
+  returns a category (`CONFIG_ERROR` / `INFRA_FLAKE` / `ASSERTION_FAILURE` / `AI_QUOTA_EXHAUSTED`),
+  `shouldRetry`, and a `retryBudget`. Deliberately separate from the rule-based `RETRY_VERDICTS` table above,
+  not a replacement for it — different category set (adds `INFRA_FLAKE`, which the rule-based table has no
+  equivalent for) and a per-call AI verdict instead of a fixed prose policy.
+
+Both are pure verdict functions (`classifyRecovery(recovery)`, `dispatchRetry(test)`). They share one JSON
+unwrapper (`src/ai-agents/json-response.ts`, covered by `json-response.spec.ts`) — models wrap a "JSON only"
+reply in a ```json fence often enough that each caller re-implementing that tolerance is how two call sites
+drift apart. Shape validation is unit-tested per module (`healing-classify.spec.ts`, `retry-dispatch.spec.ts`);
+neither has been called from
+`run.ts` or CI yet, so there's no live-call verification of either beyond the parser.
+
 ## 5. Affected-Test Selection
 
 ```bash
