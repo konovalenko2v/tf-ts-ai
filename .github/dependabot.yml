@@ -1,0 +1,39 @@
+version: 2
+updates:
+  # npm: grouped so a routine week is one PR to review rather than a dozen. Playwright is kept out
+  # of the group deliberately — a browser-engine bump is the one update here that can change test
+  # behaviour on its own, so it should be reviewed (and its suite run) in isolation.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        patterns:
+          - '@types/*'
+          - 'eslint*'
+          - '@eslint/*'
+          - 'typescript-eslint'
+          - 'prettier*'
+          - 'c8'
+          - 'tsx'
+          - 'typescript'
+      allure:
+        patterns:
+          - 'allure*'
+    ignore:
+      # TypeScript 7 moved the compiler to Go and has no stable programmatic API until 7.1;
+      # src/test-selection/affected-tests.ts builds its import graph on that API, so a major bump
+      # needs a planned migration, not an automated PR.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - '*'
