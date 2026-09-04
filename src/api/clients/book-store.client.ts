@@ -28,6 +28,13 @@ export class BookStoreClient {
       headers: { Authorization: `Bearer ${token}` },
     });
   }
+
+  async addBookToCollection(userId: string, isbn: string, token: string) {
+    return this.request.post(`${config.bookStoreHost}${BOOKSTORE_PATH}/Books`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { userId, collectionOfIsbns: [{ isbn }] },
+    });
+  }
 }
 
 export async function achieve(request: APIRequestContext, userName: string, password: string): Promise<string | undefined> {
