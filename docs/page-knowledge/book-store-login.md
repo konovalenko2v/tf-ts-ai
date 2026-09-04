@@ -7,6 +7,16 @@ Confirmed live: filling `#userName` / `#password` with valid credentials (a user
 navigates straight to `/profile`, no CAPTCHA step. This is the opposite of `/register`, so
 login-based UI flows are achievable without the API-only workaround register needs.
 
+## Rapid repeated logins for the same account can be rejected
+
+Confirmed live: running two tests back-to-back in the same suite run, each doing a fresh UI login
+as the same account, the second `#login` click returned "Invalid username or password!" on the
+page even though the credentials were unchanged and `POST /Account/v1/GenerateToken` kept
+succeeding for that exact username/password throughout. This is UI-login-specific throttling (or
+similar), not a credentials problem — don't "fix" it by rotating passwords or re-registering.
+**Mitigation**: share one login across multiple assertions in the same test rather than logging in
+once per test for the same account.
+
 ## Locators
 
 | Element | Locator | Notes |

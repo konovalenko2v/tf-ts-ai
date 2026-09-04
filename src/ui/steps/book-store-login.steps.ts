@@ -28,4 +28,10 @@ export class BookStoreLoginSteps {
       await expect(this.loginPage.bookRow(title)).toBeVisible();
     });
   }
+
+  async verifyCollectionSize(expectedCount: number) {
+    await test.step(`Verify the collection has ${expectedCount} book(s)`, async () => {
+      await expect(this.loginPage.profileRows).toHaveCount(expectedCount);
+    });
+  }
 }
