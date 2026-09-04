@@ -33,6 +33,7 @@ export const config = {
   checkBoxHost: `${uiBaseHost}/checkbox`,
   buttonsHost: `${uiBaseHost}/buttons`,
   webTablesHost: `${uiBaseHost}/webtables`,
+  bookStoreListHost: `${uiBaseHost}/books`,
 };
 
 export function requireEnv(name: string): string {
