@@ -26,4 +26,16 @@ export class BookStoreListSteps {
       await expect(this.bookStoreListPage.pagesValue).toHaveText(String(expectedPages));
     });
   }
+
+  async listedTitles(): Promise<string[]> {
+    return test.step('Read all listed book titles', () => this.bookStoreListPage.rowTitles());
+  }
+
+  async verifyDetailFieldsPresent(title: string) {
+    await test.step(`Verify "${title}" has all detail fields`, async () => {
+      for (const field of this.bookStoreListPage.detailFields) {
+        await expect(this.bookStoreListPage.detailFieldWrapper(field)).not.toBeEmpty();
+      }
+    });
+  }
 }

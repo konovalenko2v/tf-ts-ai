@@ -2,6 +2,18 @@ import { Locator } from '@playwright/test';
 import { HealPage } from 'healwright';
 import { config } from '../../core/config';
 
+// See docs/page-knowledge/book-store-list.md — the detail-view field panel shown for every book.
+const DETAIL_FIELD_WRAPPERS = [
+  'ISBN-wrapper',
+  'title-wrapper',
+  'subtitle-wrapper',
+  'author-wrapper',
+  'publisher-wrapper',
+  'pages-wrapper',
+  'description-wrapper',
+  'website-wrapper',
+] as const;
+
 export class BookStoreListPage {
   readonly searchBox: Locator;
   readonly rows: Locator;
@@ -30,5 +42,18 @@ export class BookStoreListPage {
 
   async openBook(title: string) {
     await this.bookLink(title).click();
+  }
+
+  async rowTitles(): Promise<string[]> {
+    await this.rows.first().waitFor();
+    return this.rows.locator('.action-buttons a').allInnerTexts();
+  }
+
+  detailFieldWrapper(field: (typeof DETAIL_FIELD_WRAPPERS)[number]): Locator {
+    return this.page.locator(`#${field}`);
+  }
+
+  get detailFields(): readonly (typeof DETAIL_FIELD_WRAPPERS)[number][] {
+    return DETAIL_FIELD_WRAPPERS;
   }
 }

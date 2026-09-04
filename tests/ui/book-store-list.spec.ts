@@ -11,4 +11,18 @@ test.describe('DemoQA UI @ Book Store', () => {
     await steps.openBook(title);
     await steps.verifyTotalPages(278);
   });
+
+  test('Every listed book has all fields filled in', async ({ page }) => {
+    const steps = new BookStoreListSteps(page);
+
+    await steps.openBookStorePage();
+    const titles = await steps.listedTitles();
+
+    for (const title of titles) {
+      await steps.openBookStorePage();
+      await steps.searchFor(title);
+      await steps.openBook(title);
+      await steps.verifyDetailFieldsPresent(title);
+    }
+  });
 });
