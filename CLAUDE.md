@@ -7,23 +7,23 @@ duplicate README content here; link to its section (`README.md#N`) instead.
 
 ## Where things live
 
-| Task involves...                                     | Look at                                                                                                                                  | Details                     |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| REST tests (Restful Booker)                          | `src/api/` (clients/types/steps/data/auth), `tests/api/*.spec.ts`                                                                        | README §"Endpoint Coverage" |
-| GraphQL tests (Hygraph)                              | `src/graphql/`, `tests/graphql/*.spec.ts`, `resources/GQL/*.json`                                                                        | README §"GraphQL and UI"    |
-| UI tests (DemoQA)                                    | `src/ui/` (fixtures.ts, pages/, steps/), `tests/ui/*.spec.ts`                                                                            | README §1                   |
-| Self-healing locators (healwright)                   | `src/ui/fixtures.ts`                                                                                                                     | README §1                   |
-| Observability / JSONL run logs                       | `src/observability/reporter.ts`, `.observability/*.jsonl` (gitignored)                                                                   | README §2                   |
-| Agent-Fixer (locator fix → PR)                       | `src/agent-fixer/`                                                                                                                       | README §3                   |
-| Failure Analysis (cause grouping, retry verdicts)    | `src/failure-analysis/`                                                                                                                  | README §4                   |
-| Affected-test selection                              | `src/test-selection/`                                                                                                                    | README §5                   |
-| Jira red-test triage                                 | `src/jira-triage/`                                                                                                                       | README §6                   |
-| Self-evolving test suite (new edge-case test → PR)   | `src/test-evolution/`                                                                                                                    | README §7                   |
-| Goal-based tests (prose goal → agent-written driver) | `src/goal-evolution/` (`goal.ts`, `goals/*.ts`, `run.ts`, `propose-driver.ts`)                                                           | README §8                   |
+| Task involves...                                     | Look at                                                                                                                                             | Details                     |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| REST tests (Restful Booker)                          | `src/api/` (clients/types/steps/data/auth), `tests/api/*.spec.ts`                                                                                   | README §"Endpoint Coverage" |
+| GraphQL tests (Hygraph)                              | `src/graphql/`, `tests/graphql/*.spec.ts`, `resources/GQL/*.json`                                                                                   | README §"GraphQL and UI"    |
+| UI tests (DemoQA)                                    | `src/ui/` (fixtures.ts, pages/, steps/), `tests/ui/*.spec.ts`                                                                                       | README §1                   |
+| Self-healing locators (healwright)                   | `src/ui/fixtures.ts`                                                                                                                                | README §1                   |
+| Observability / JSONL run logs                       | `src/observability/reporter.ts`, `.observability/*.jsonl` (gitignored)                                                                              | README §2                   |
+| Agent-Fixer (locator fix → PR)                       | `src/agent-fixer/`                                                                                                                                  | README §3                   |
+| Failure Analysis (cause grouping, retry verdicts)    | `src/failure-analysis/`                                                                                                                             | README §4                   |
+| Affected-test selection                              | `src/test-selection/`                                                                                                                               | README §5                   |
+| Jira red-test triage                                 | `src/jira-triage/`                                                                                                                                  | README §6                   |
+| Self-evolving test suite (new edge-case test → PR)   | `src/test-evolution/`                                                                                                                               | README §7                   |
+| Goal-based tests (prose goal → agent-written driver) | `src/goal-evolution/` (`goal.ts`, `goals/*.ts`, `run.ts`, `propose-driver.ts`)                                                                      | README §8                   |
 | Page-knowledge cache (per-page DOM/behavior notes)   | `docs/page-knowledge/*.md` — currently `text-box.md`, `check-box.md`, `buttons.md`, `book-store-register.md`, `book-store-list.md`, `web-tables.md` | README §9                   |
-| AI personas / model tiers                            | `ai-agents/personas/*.md` (system prompts), `ai-agents/profiles/{cheap,paranoid}.env`, `src/ai-agents/cli-fallback.ts`, `gemini-text.ts` | README §10                  |
-| Env vars / config                                    | `src/core/config.ts`, `src/core/global-setup.ts` (fails fast on missing vars), `.env.example` (full inventory)                           | —                           |
-| CI pipeline                                          | `.github/workflows/regression.yml`                                                                                                       | —                           |
+| AI personas / model tiers                            | `ai-agents/personas/*.md` (system prompts), `ai-agents/profiles/{cheap,paranoid}.env`, `src/ai-agents/cli-fallback.ts`, `gemini-text.ts`            | README §10                  |
+| Env vars / config                                    | `src/core/config.ts`, `src/core/global-setup.ts` (fails fast on missing vars), `.env.example` (full inventory)                                      | —                           |
+| CI pipeline                                          | `.github/workflows/regression.yml`                                                                                                                  | —                           |
 
 Personas on disk: `qa-analyst`, `test-developer`, `locator-medic`, `reviewer-tests`, `goal-solver`
 (extends `test-developer`), `reporter` (docs-only convention, not loaded at runtime).
