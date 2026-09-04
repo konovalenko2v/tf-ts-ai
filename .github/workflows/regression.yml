@@ -3,10 +3,10 @@ run-name: Regression #${{ github.run_number }}
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   workflow_dispatch:
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 permissions:
   contents: read
@@ -14,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: 'pages'
   cancel-in-progress: false
 
 jobs:

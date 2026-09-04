@@ -30,7 +30,9 @@ export class CheckBoxPage {
   }
 
   private treeNode(label: string): Locator {
-    return this.page.locator('.rc-tree-treenode', { hasText: label }).filter({ has: this.page.locator('.rc-tree-title', { hasText: label }) });
+    return this.page
+      .locator('.rc-tree-treenode', { hasText: label })
+      .filter({ has: this.page.locator('.rc-tree-title', { hasText: label }) });
   }
 
   async toggleCheckbox(label: string) {

@@ -10,21 +10,21 @@ self-repair, test selection, and triage.
 
 ## Status at a glance
 
-| # | Feature | Status | What it does | Why it matters |
-|---|---|:---:|---|---|
-| 1 | [Self-Healing UI Locators](#1-self-healing-ui-locators) | 🟢 100% | AI re-finds a broken locator at runtime, caches the fix | A cosmetic markup change (an id/class rename) doesn't turn the test red — the AI patches around it live instead of a human fixing the locator by hand |
-| 2 | [AI Observability Layer](#2-ai-observability-layer) | 🟢 100% | Structured JSONL log of every test step, including silent recoveries | Gives every other AI feature below the structured data it needs to work from — without this, nothing downstream (fixer, triage, analysis) has anything to read |
-| 3 | [Agent-Fixer](#3-agent-fixer) | 🟡 ~90% | Opens a PR that patches source code for a locator healing already fixed at runtime | Turns a *live* fix (self-healing, gone if the cache is cleared) into a *permanent* one committed to source, so the same locator doesn't need re-healing every run |
-| 4 | [Failure Analysis](#4-failure-analysis) | 🟢 100% | Groups failures by real cause, states a retry verdict per cause | Saves a human from reading 20 red tests one by one — collapses them into "these are the same root cause" and says whether retrying is even worth it |
-| 5 | [Affected-Test Selection](#5-affected-test-selection) | 🟢 100% | Runs only the specs a change can actually affect, via a real TS import graph | Faster PR feedback — a one-file change doesn't have to wait for the entire suite to run before you know if it broke something |
-| 6 | [Jira-Driven Red-Test Triage](#6-jira-driven-red-test-triage) | 🟡 ~60% | Reads Jira context for a failing assertion, verdicts bug vs. intentional change | **Triage** = sorting failures by what actually needs attention. A red test isn't automatically a bug — it might just be asserting old, now-intentionally-changed behavior. This tells you which, using the ticket that likely caused it, instead of a human having to go look it up |
-| 7 | [Self-Evolving Test Suite](#7-self-evolving-test-suite) | 🟡 ~70% | AI proposes a new edge-case test, only opens a PR if it demonstrably passes | Grows coverage without waiting for a human to think up every edge case — but only ever proposes a test it already proved passes, never an unverified guess |
-| 8 | [Goal-Based Tests](#8-goal-based-tests) | 🟡 demo | Agent resolves a plain-English goal into a driver, from page-knowledge alone, judged by a fixed human-written oracle it never sees | Proves the framework's pieces (page-knowledge, personas, CLI fallback) compose into "describe intent, not steps" — deliberately one demo goal, not a general capability yet |
-| 9 | [Page Knowledge Cache](#9-page-knowledge-cache) | 🟢 100% | Committed per-page DOM/behavior notes — skip re-exploring a page already documented | Saves real time/tokens — writing a test for a page already explored once doesn't require opening a browser and re-discovering its structure from scratch |
-| 10 | [AI Agent Personas](#10-ai-agent-personas) | 🟡 ~80% | Standardized personas (test-developer, locator-medic, reviewer-tests, qa-analyst, goal-solver) with a 4-tier CLI fallback (Claude + 3 Gemini models, optionally on separate API keys) and a separate review-tier model | One place to read/edit what each AI role is instructed to do, instead of an inline prompt string buried in each module — and a second, differently-modeled review gate before a generated test ships |
-| 11 | [Smart Retry / Prioritization](#not-yet-built) | ⚪ 0% | Not built — today only a printed verdict, no dynamic retry-budget control | Would let CI stop wasting retries on failures that can never pass on retry (e.g. a missing env var) and spend them only where retrying can actually help |
-| 12 | Intent-Based Testing + Draft PR on a jira-triage YES verdict | ⚪ 0% | Not built — jira-triage stops at the verdict, no fix generation | Would close the loop #6 opens: once triage confirms "this test is just outdated," automatically propose the updated test instead of leaving a human to rewrite it |
-| 13 | Healwright → Claude third AI tier | ⚪ 0% | Deliberately not built — needs a paid `ANTHROPIC_API_KEY`, not available | Would add a second fallback model for runtime healing (today it's Gemini→Gemini only) so a locator fails to heal only if two providers both can't find it |
+| #   | Feature                                                       | Status  | What it does                                                                                                                                                                                                           | Why it matters                                                                                                                                                                                                                                                                      |
+| --- | ------------------------------------------------------------- | :-----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | [Self-Healing UI Locators](#1-self-healing-ui-locators)       | 🟢 100% | AI re-finds a broken locator at runtime, caches the fix                                                                                                                                                                | A cosmetic markup change (an id/class rename) doesn't turn the test red — the AI patches around it live instead of a human fixing the locator by hand                                                                                                                               |
+| 2   | [AI Observability Layer](#2-ai-observability-layer)           | 🟢 100% | Structured JSONL log of every test step, including silent recoveries                                                                                                                                                   | Gives every other AI feature below the structured data it needs to work from — without this, nothing downstream (fixer, triage, analysis) has anything to read                                                                                                                      |
+| 3   | [Agent-Fixer](#3-agent-fixer)                                 | 🟡 ~90% | Opens a PR that patches source code for a locator healing already fixed at runtime                                                                                                                                     | Turns a _live_ fix (self-healing, gone if the cache is cleared) into a _permanent_ one committed to source, so the same locator doesn't need re-healing every run                                                                                                                   |
+| 4   | [Failure Analysis](#4-failure-analysis)                       | 🟢 100% | Groups failures by real cause, states a retry verdict per cause                                                                                                                                                        | Saves a human from reading 20 red tests one by one — collapses them into "these are the same root cause" and says whether retrying is even worth it                                                                                                                                 |
+| 5   | [Affected-Test Selection](#5-affected-test-selection)         | 🟢 100% | Runs only the specs a change can actually affect, via a real TS import graph                                                                                                                                           | Faster PR feedback — a one-file change doesn't have to wait for the entire suite to run before you know if it broke something                                                                                                                                                       |
+| 6   | [Jira-Driven Red-Test Triage](#6-jira-driven-red-test-triage) | 🟡 ~60% | Reads Jira context for a failing assertion, verdicts bug vs. intentional change                                                                                                                                        | **Triage** = sorting failures by what actually needs attention. A red test isn't automatically a bug — it might just be asserting old, now-intentionally-changed behavior. This tells you which, using the ticket that likely caused it, instead of a human having to go look it up |
+| 7   | [Self-Evolving Test Suite](#7-self-evolving-test-suite)       | 🟡 ~70% | AI proposes a new edge-case test, only opens a PR if it demonstrably passes                                                                                                                                            | Grows coverage without waiting for a human to think up every edge case — but only ever proposes a test it already proved passes, never an unverified guess                                                                                                                          |
+| 8   | [Goal-Based Tests](#8-goal-based-tests)                       | 🟡 demo | Agent resolves a plain-English goal into a driver, from page-knowledge alone, judged by a fixed human-written oracle it never sees                                                                                     | Proves the framework's pieces (page-knowledge, personas, CLI fallback) compose into "describe intent, not steps" — deliberately one demo goal, not a general capability yet                                                                                                         |
+| 9   | [Page Knowledge Cache](#9-page-knowledge-cache)               | 🟢 100% | Committed per-page DOM/behavior notes — skip re-exploring a page already documented                                                                                                                                    | Saves real time/tokens — writing a test for a page already explored once doesn't require opening a browser and re-discovering its structure from scratch                                                                                                                            |
+| 10  | [AI Agent Personas](#10-ai-agent-personas)                    | 🟡 ~80% | Standardized personas (test-developer, locator-medic, reviewer-tests, qa-analyst, goal-solver) with a 4-tier CLI fallback (Claude + 3 Gemini models, optionally on separate API keys) and a separate review-tier model | One place to read/edit what each AI role is instructed to do, instead of an inline prompt string buried in each module — and a second, differently-modeled review gate before a generated test ships                                                                                |
+| 11  | [Smart Retry / Prioritization](#not-yet-built)                |  ⚪ 0%  | Not built — today only a printed verdict, no dynamic retry-budget control                                                                                                                                              | Would let CI stop wasting retries on failures that can never pass on retry (e.g. a missing env var) and spend them only where retrying can actually help                                                                                                                            |
+| 12  | Intent-Based Testing + Draft PR on a jira-triage YES verdict  |  ⚪ 0%  | Not built — jira-triage stops at the verdict, no fix generation                                                                                                                                                        | Would close the loop #6 opens: once triage confirms "this test is just outdated," automatically propose the updated test instead of leaving a human to rewrite it                                                                                                                   |
+| 13  | Healwright → Claude third AI tier                             |  ⚪ 0%  | Deliberately not built — needs a paid `ANTHROPIC_API_KEY`, not available                                                                                                                                               | Would add a second fallback model for runtime healing (today it's Gemini→Gemini only) so a locator fails to heal only if two providers both can't find it                                                                                                                           |
 
 🟢 built and wired into CI · 🟡 built, partially wired or with a known gap · ⚪ not built yet
 
@@ -111,16 +111,16 @@ resources/
 
 ## Endpoint Coverage (REST)
 
-| Endpoint                | What's covered                                                                                                                              |
-|--------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| `POST /auth`           | successful and unsuccessful (invalid credentials, empty fields) authentication; on failure the status stays 200, the error is in `reason`     |
-| `GET /ping`            | service availability (201)                                                                                                                    |
-| `GET /booking`         | booking list, filtering by `firstname`/`lastname`/`checkin`/`checkout`                                                                        |
-| `GET /booking/{id}`    | existing id (200) and non-existent id (404)                                                                                                   |
-| `POST /booking`        | creation, response body validation, empty body, unicode/special characters, negative `totalprice`, invalid field types                       |
-| `PUT /booking/{id}`    | full update with a token (Cookie `token`), without a token (403), with an invalid token (403)                                                 |
-| `PATCH /booking/{id}`  | partial update                                                                                                                                 |
-| `DELETE /booking/{id}` | with a token (201), without a token (403), with an invalid token (403)                                                                        |
+| Endpoint               | What's covered                                                                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /auth`           | successful and unsuccessful (invalid credentials, empty fields) authentication; on failure the status stays 200, the error is in `reason` |
+| `GET /ping`            | service availability (201)                                                                                                                |
+| `GET /booking`         | booking list, filtering by `firstname`/`lastname`/`checkin`/`checkout`                                                                    |
+| `GET /booking/{id}`    | existing id (200) and non-existent id (404)                                                                                               |
+| `POST /booking`        | creation, response body validation, empty body, unicode/special characters, negative `totalprice`, invalid field types                    |
+| `PUT /booking/{id}`    | full update with a token (Cookie `token`), without a token (403), with an invalid token (403)                                             |
+| `PATCH /booking/{id}`  | partial update                                                                                                                            |
+| `DELETE /booking/{id}` | with a token (201), without a token (403), with an invalid token (403)                                                                    |
 
 The auth token is passed on every protected request via **Cookie `token`**, not `Authorization: Bearer`.
 
@@ -225,7 +225,7 @@ no changes to any `clients`/`steps`/`pages` file — and writes one append-only 
 Two record types, discriminated by `type`:
 
 - **`step`** — one per business-level `test.step`, carrying `outcome: "passed" | "failed" |
-  "passed_with_recovery"` plus a sanitized `error` (ANSI stripped, capped, stack trimmed). `passed_with_recovery`
+"passed_with_recovery"` plus a sanitized `error` (ANSI stripped, capped, stack trimmed). `passed_with_recovery`
   is the interesting one: a low-level step failed (e.g. a locator timed out) but the parent `test.step` ultimately
   succeeded — invisible in Allure/HTML today, and exactly what a self-healed locator looks like.
 - **`test`** — one per test attempt, with `status`, `outcome` (`flaky` distinguishable from `expected`), and
@@ -297,7 +297,7 @@ per event, via `gemini-text.ts`'s `callGemini`, with its own persona file:
 - **`healing-classify.ts`** (`ai-agents/personas/healing-classifier.md`) — takes one `passed_with_recovery`
   `RecoverySummary` (original locator, failure log, healed locator) and returns `STRUCTURAL` / `TIMING` /
   `DYNAMIC_ID` plus a suggested action (`PROPOSE_FIX` / `INCREASE_TIMEOUT` / `IGNORE_TEMPORARY_FLAKE`). Answers
-  *why* a locator broke, which `summarizeRecoveries()` above deliberately doesn't — a `TIMING` verdict means the
+  _why_ a locator broke, which `summarizeRecoveries()` above deliberately doesn't — a `TIMING` verdict means the
   code must NOT change (a `waitFor`/timeout fix instead), so this is meant to gate agent-fixer from "fixing" a
   locator that was never actually wrong.
 - **`retry-dispatch.ts`** (`ai-agents/personas/retry-dispatcher.md`) — takes one failed `TestSummaryEvent` and
@@ -429,10 +429,10 @@ the page-knowledge file being wrong or stale, not an agent mistake.
 
 **Two goals, two things each proves:**
 
-- `buttons-dynamic-click` (UI) — the agent has to infer a *locator strategy* from a behavior note (an id that's
+- `buttons-dynamic-click` (UI) — the agent has to infer a _locator strategy_ from a behavior note (an id that's
   regenerated on every page load), not just copy a locator out of the page-knowledge table.
 - `book-store-register-user` (API) — a differently-shaped claim, calibrated deliberately: `docs/page-knowledge/
-  book-store-register.md` documents *two* possible paths (a CAPTCHA-blocked UI form, and a working REST endpoint)
+book-store-register.md` documents _two_ possible paths (a CAPTCHA-blocked UI form, and a working REST endpoint)
   and states outright which one is achievable — the agent isn't deriving that conclusion from raw evidence, it's
   reading a conclusion a human already reached and correctly acting on it: choosing the API layer, writing the
   client in the existing `booking.client.ts` shape, and never touching the UI form. The goal description itself
@@ -494,13 +494,13 @@ ai-agents/
                              the same effort as generation defeats the point of a paranoid pass
 ```
 
-| Persona | Lives in | Wired into |
-|---|---|---|
-| `test-developer` | `src/test-evolution/propose-test.ts` | `npm run test-evolution` |
-| `locator-medic` | `src/agent-fixer/fix-proposer.ts` | `npm run agent-fixer` (layer 2, cache-miss fallback) |
-| `reviewer-tests` | `src/ai-agents/reviewer-tests.ts` | `npm run test-evolution`, as a second gate after the generated test already passed a real run |
-| `goal-solver` | `src/goal-evolution/propose-driver.ts` | `npm run goal-evolution` — extends `test-developer`, resolves a plain-English goal into a driver, never writes the oracle |
-| `qa-analyst` | `src/ai-agents/qa-analyst.ts` | `npm run qa-analyst -- <requirement-file>` — standalone, not wired into CI (a requirement has no fixed file location the way an observability run does) |
+| Persona          | Lives in                               | Wired into                                                                                                                                              |
+| ---------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test-developer` | `src/test-evolution/propose-test.ts`   | `npm run test-evolution`                                                                                                                                |
+| `locator-medic`  | `src/agent-fixer/fix-proposer.ts`      | `npm run agent-fixer` (layer 2, cache-miss fallback)                                                                                                    |
+| `reviewer-tests` | `src/ai-agents/reviewer-tests.ts`      | `npm run test-evolution`, as a second gate after the generated test already passed a real run                                                           |
+| `goal-solver`    | `src/goal-evolution/propose-driver.ts` | `npm run goal-evolution` — extends `test-developer`, resolves a plain-English goal into a driver, never writes the oracle                               |
+| `qa-analyst`     | `src/ai-agents/qa-analyst.ts`          | `npm run qa-analyst -- <requirement-file>` — standalone, not wired into CI (a requirement has no fixed file location the way an observability run does) |
 
 > [!IMPORTANT]
 > `reviewer-tests` is **advisory, not a gate that blocks the PR** — a CLI/API failure here falls through to
@@ -524,7 +524,7 @@ path to wire in, since both callers already produce markdown in this shape.
 - **Smart retry as a real lever** — failure-analysis prints a retry verdict per failure category, but nothing
   today turns that into an actual dynamic retry-budget decision inside Playwright's config.
 - **A reason-check gate before agent-fixer promotes a heal to permanent code** — today a `passed_with_recovery`
-  step goes straight to a cache-lookup/AI-proposed fix with no check on *why* the original locator broke: a
+  step goes straight to a cache-lookup/AI-proposed fix with no check on _why_ the original locator broke: a
   slow-to-render element (a timing issue — the real fix is a wait, not a new selector) and an actual structural
   DOM change both look identical to agent-fixer today. Should classify the reason before committing a fix, not
   just cache the result and move on.

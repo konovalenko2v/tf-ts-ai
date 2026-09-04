@@ -7,9 +7,7 @@ test.describe('Hygraph GraphQL API @ Negative queries', () => {
   const MALFORMED = readQuery('MalformedQuery.json');
   const NON_EXISTENT_FIELD = readQuery('QueryWithNonExistentField.json');
 
-  test('A query for a non-existent ID returns HTTP 200 with data.product = null and no errors array', async ({
-    request,
-  }) => {
+  test('A query for a non-existent ID returns HTTP 200 with data.product = null and no errors array', async ({ request }) => {
     const client = new GraphQlClient(request);
     const response = await client.execute(NON_EXISTENT_ID);
     const body = await response.json();
@@ -19,9 +17,7 @@ test.describe('Hygraph GraphQL API @ Negative queries', () => {
     expect(body.errors).toBeUndefined();
   });
 
-  test('A syntactically malformed query returns an errors[] array with a message and no data', async ({
-    request,
-  }) => {
+  test('A syntactically malformed query returns an errors[] array with a message and no data', async ({ request }) => {
     const client = new GraphQlClient(request);
     const response = await client.execute(MALFORMED);
     const body = await response.json();
@@ -32,9 +28,7 @@ test.describe('Hygraph GraphQL API @ Negative queries', () => {
     expect(body.data).toBeNull();
   });
 
-  test("Requesting a field that doesn't exist on the type returns a validation error and no data", async ({
-    request,
-  }) => {
+  test("Requesting a field that doesn't exist on the type returns a validation error and no data", async ({ request }) => {
     const client = new GraphQlClient(request);
     const response = await client.execute(NON_EXISTENT_FIELD);
     const body = await response.json();

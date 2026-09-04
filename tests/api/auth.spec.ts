@@ -3,9 +3,7 @@ import { AuthSteps } from '../../src/api/steps/auth.steps';
 import { getValidUserName, getValidUserPassword } from '../../src/core/config';
 
 test.describe('Restful Booker API @ Auth', () => {
-  test('POST /auth with invalid credentials: status stays 200, body contains reason: Bad credentials', async ({
-    request,
-  }) => {
+  test('POST /auth with invalid credentials: status stays 200, body contains reason: Bad credentials', async ({ request }) => {
     const authSteps = new AuthSteps(request);
     const response = await authSteps.sendAuthRequest(getValidUserName(), 'wrong-password');
 
@@ -14,9 +12,7 @@ test.describe('Restful Booker API @ Auth', () => {
     expect(body.reason).toBe('Bad credentials');
   });
 
-  test('POST /auth with an unknown username: status stays 200, body contains reason: Bad credentials', async ({
-    request,
-  }) => {
+  test('POST /auth with an unknown username: status stays 200, body contains reason: Bad credentials', async ({ request }) => {
     const authSteps = new AuthSteps(request);
     const response = await authSteps.sendAuthRequest('unknown-user', getValidUserPassword());
 

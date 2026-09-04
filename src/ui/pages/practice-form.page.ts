@@ -49,7 +49,10 @@ export class PracticeFormPage {
     // "Self-Healing UI Locators"). agent-fixer: skip — do not propose a fix for this line.
     await this.page.heal.click(this.page.locator('#react-select-3-option-broken'), 'First suggested option in the state dropdown');
     await this.page.locator('#city').click();
-    await this.page.heal.click(this.page.locator('div[id^="react-select-"][id*="-option-0"]'), 'First suggested option in the city dropdown');
+    await this.page.heal.click(
+      this.page.locator('div[id^="react-select-"][id*="-option-0"]'),
+      'First suggested option in the city dropdown',
+    );
   }
 
   async clickSubmit() {
@@ -57,5 +60,4 @@ export class PracticeFormPage {
     await submitButton.scrollIntoViewIfNeeded();
     await submitButton.click();
   }
-
 }

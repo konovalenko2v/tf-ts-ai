@@ -7,3 +7,11 @@ test-results/
 .observability/
 .self-heal/
 package-lock.json
+
+# Persona files are prompt text sent verbatim to a model, not source — their exact wording and
+# layout are the interface. Reformatting them is an uncontrolled change to a prompt.
+ai-agents/personas/
+
+# Page-knowledge notes are hand-maintained reference tables read by both humans and agents; their
+# column alignment is deliberate and reflowing them creates noisy diffs on every edit.
+docs/page-knowledge/

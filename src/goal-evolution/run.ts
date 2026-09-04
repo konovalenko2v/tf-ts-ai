@@ -96,7 +96,10 @@ function report(entry: RunEntry, attempt: number, reason: StopReason, detail: st
     );
   }
   if (reason === 'generation-timeout') {
-    lines.push('', `Each attempt was capped at ${ATTEMPT_TIMEOUT_MS}ms of Claude CLI time — raise ATTEMPT_TIMEOUT_MS in run.ts if this goal is legitimately harder, not just retry blindly.`);
+    lines.push(
+      '',
+      `Each attempt was capped at ${ATTEMPT_TIMEOUT_MS}ms of Claude CLI time — raise ATTEMPT_TIMEOUT_MS in run.ts if this goal is legitimately harder, not just retry blindly.`,
+    );
   }
 
   process.stderr.write(lines.join('\n') + '\n');
@@ -119,9 +122,13 @@ async function main(): Promise<void> {
     if (attempt > 1 && fs.existsSync(driverPath)) fs.unlinkSync(driverPath);
 
     if (fs.existsSync(driverPath)) {
-      process.stderr.write(`[goal-evolution] ${entry.goal.driverFile} already exists — skipping generation, running the oracle against it as-is\n`);
+      process.stderr.write(
+        `[goal-evolution] ${entry.goal.driverFile} already exists — skipping generation, running the oracle against it as-is\n`,
+      );
     } else {
-      process.stderr.write(`[goal-evolution] attempt ${attempt}/${MAX_ATTEMPTS}: resolving goal "${entry.goal.id}": ${entry.goal.description}\n`);
+      process.stderr.write(
+        `[goal-evolution] attempt ${attempt}/${MAX_ATTEMPTS}: resolving goal "${entry.goal.id}": ${entry.goal.description}\n`,
+      );
       try {
         proposeDriver(entry.goal, ATTEMPT_TIMEOUT_MS);
       } catch (err) {
@@ -144,7 +151,12 @@ async function main(): Promise<void> {
 
     const source = fs.readFileSync(driverPath, 'utf-8');
     if (!/export\s+(async\s+)?function\s+achieve/.test(source) && !/export\s+const\s+achieve/.test(source)) {
-      report(entry, attempt, 'contract-violation', `${entry.goal.driverFile} does not export an achieve(...) function as required by the goal-solver contract`);
+      report(
+        entry,
+        attempt,
+        'contract-violation',
+        `${entry.goal.driverFile} does not export an achieve(...) function as required by the goal-solver contract`,
+      );
       process.exitCode = 1;
       return; // not retried — a missing export isn't something a second attempt is likely to fix differently, and it's cheap to just look
     }
@@ -172,7 +184,9 @@ async function main(): Promise<void> {
       continue;
     }
 
-    process.stderr.write(`[goal-evolution] goal achieved — oracle passed against agent-written driver (attempt ${attempt}/${MAX_ATTEMPTS})\n`);
+    process.stderr.write(
+      `[goal-evolution] goal achieved — oracle passed against agent-written driver (attempt ${attempt}/${MAX_ATTEMPTS})\n`,
+    );
     return;
   }
 }

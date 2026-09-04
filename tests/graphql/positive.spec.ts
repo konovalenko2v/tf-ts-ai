@@ -15,9 +15,7 @@ test.describe('Hygraph GraphQL API @ Positive queries', () => {
     return body.data.products[0].id;
   }
 
-  test('A Relay-style connection query with pagination/limit returns pageInfo, edges and an aggregate count', async ({
-    request,
-  }) => {
+  test('A Relay-style connection query with pagination/limit returns pageInfo, edges and an aggregate count', async ({ request }) => {
     const client = new GraphQlClient(request);
     const response = await client.execute(LIST, { numPages: 2 });
     const body = await response.json();
@@ -42,9 +40,7 @@ test.describe('Hygraph GraphQL API @ Positive queries', () => {
     expect(body.data.product.price).toBeGreaterThan(0);
   });
 
-  test('A query using GraphQL variables (not string interpolation) returns the entity matching the variable', async ({
-    request,
-  }) => {
+  test('A query using GraphQL variables (not string interpolation) returns the entity matching the variable', async ({ request }) => {
     const client = new GraphQlClient(request);
     const productId = await firstProductId(client);
 
@@ -56,9 +52,7 @@ test.describe('Hygraph GraphQL API @ Positive queries', () => {
     expect(body.data.product.name).toBeTruthy();
   });
 
-  test('A query with nested fields across types (product -> categories -> name) resolves the relation', async ({
-    request,
-  }) => {
+  test('A query with nested fields across types (product -> categories -> name) resolves the relation', async ({ request }) => {
     const client = new GraphQlClient(request);
     const productId = await firstProductId(client);
 

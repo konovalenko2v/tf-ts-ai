@@ -89,7 +89,9 @@ export async function callGemini(prompt: string, models: ModelPair = DEFAULT_PAI
   } catch (err) {
     const message = (err as Error).message;
     if (!models.fallback || !isQuotaExhausted(message)) throw err;
-    process.stderr.write(`${models.logTag ?? '[ai-agents]'} ${models.primary} quota exhausted — retrying with fallback model ${models.fallback}\n`);
+    process.stderr.write(
+      `${models.logTag ?? '[ai-agents]'} ${models.primary} quota exhausted — retrying with fallback model ${models.fallback}\n`,
+    );
     return callGeminiOnce(models.fallback, prompt, caller, 1);
   }
 }

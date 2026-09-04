@@ -50,7 +50,9 @@ function renderResultsTable(results: TestSummaryEvent[]): string {
   if (results.length === 0) {
     return '_No observability record found for this run — results below are unverified._';
   }
-  const rows = results.map((r) => `| ${r.status === 'passed' ? '✅' : '❌'} ${r.status} | ${r.durationMs}ms | ${r.testTitlePath.split('>').pop()!.trim()} |`);
+  const rows = results.map(
+    (r) => `| ${r.status === 'passed' ? '✅' : '❌'} ${r.status} | ${r.durationMs}ms | ${r.testTitlePath.split('>').pop()!.trim()} |`,
+  );
   return ['| Result | Duration | Test |', '|---|---|---|', ...rows].join('\n');
 }
 

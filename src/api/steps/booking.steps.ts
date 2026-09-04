@@ -36,8 +36,7 @@ export class BookingSteps {
   }
 
   async partialUpdateBooking(id: number, patchBody: Booking, token: string | null) {
-    return test.step(`Partially update booking id ${id}`, async () =>
-      this.bookingClient.partialUpdateBooking(id, patchBody, token));
+    return test.step(`Partially update booking id ${id}`, async () => this.bookingClient.partialUpdateBooking(id, patchBody, token));
   }
 
   async deleteBooking(id: number, token: string | null) {

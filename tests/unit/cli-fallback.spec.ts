@@ -46,7 +46,7 @@ test.describe('resolveGeminiApiKeyFrom', () => {
     { model: 'tier-2', apiKey: 'key-2' },
   ];
 
-  test('uses the tier\'s own key when configured', () => {
+  test("uses the tier's own key when configured", () => {
     expect(resolveGeminiApiKeyFrom(tiers, 0, { geminiApiKey: undefined, aiApiKey: undefined })).toBe('key-0');
     expect(resolveGeminiApiKeyFrom(tiers, 2, { geminiApiKey: undefined, aiApiKey: undefined })).toBe('key-2');
   });
@@ -76,7 +76,7 @@ test.describe('resolveGeminiApiKeyFrom', () => {
 });
 
 test.describe('isTimeoutError', () => {
-  test('recognizes killed:true (the signal Node sets when a running child is SIGTERM\'d by its own timeout)', () => {
+  test("recognizes killed:true (the signal Node sets when a running child is SIGTERM'd by its own timeout)", () => {
     expect(isTimeoutError({ killed: true })).toBe(true);
   });
 

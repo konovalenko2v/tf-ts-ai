@@ -96,7 +96,9 @@ export default class ObservabilityReporter implements Reporter {
     this.recoveredBuffer.delete(step);
 
     if (step.error) {
-      const target = recovered?.length ? { action: recovered[recovered.length - 1].action, selector: recovered[recovered.length - 1].selector } : undefined;
+      const target = recovered?.length
+        ? { action: recovered[recovered.length - 1].action, selector: recovered[recovered.length - 1].selector }
+        : undefined;
       this.emitStepEvent(test, result, step, 'failed', target, sanitizeError(step.error), recovered);
     } else if (recovered?.length) {
       const target = { action: recovered[recovered.length - 1].action, selector: recovered[recovered.length - 1].selector };

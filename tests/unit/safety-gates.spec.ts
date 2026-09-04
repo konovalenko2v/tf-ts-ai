@@ -100,7 +100,7 @@ test.describe('branch-prefix agreement with regression.yml', () => {
   // having this test silently start validating the wrong occurrence while still passing.
   function findHeadRefMatch(): string {
     const matches = [...workflow.matchAll(/startsWith\(github\.head_ref,\s*'([^']+)'\)/g)];
-    expect(matches.length, 'expected exactly one startsWith(github.head_ref, \'...\') trigger in regression.yml').toBe(1);
+    expect(matches.length, "expected exactly one startsWith(github.head_ref, '...') trigger in regression.yml").toBe(1);
     return matches[0][1];
   }
 

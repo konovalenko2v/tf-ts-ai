@@ -49,7 +49,11 @@ export async function analyze(requirementText: string): Promise<string> {
     '',
     requirementText,
   ].join('\n');
-  return callGemini(prompt, { primary: process.env.AI_MODEL ?? 'gemini-3.6-flash', fallback: process.env.AI_MODEL_FALLBACK, logTag: '[qa-analyst]' });
+  return callGemini(prompt, {
+    primary: process.env.AI_MODEL ?? 'gemini-3.6-flash',
+    fallback: process.env.AI_MODEL_FALLBACK,
+    logTag: '[qa-analyst]',
+  });
 }
 
 async function main(): Promise<void> {

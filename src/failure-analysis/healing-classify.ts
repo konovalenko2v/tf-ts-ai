@@ -22,7 +22,11 @@ export interface HealingClassification {
   action: HealingAction;
 }
 
-const MODELS: ModelPair = { primary: process.env.AI_MODEL ?? 'gemini-3.6-flash', fallback: process.env.AI_MODEL_FALLBACK, logTag: '[healing-classifier]' };
+const MODELS: ModelPair = {
+  primary: process.env.AI_MODEL ?? 'gemini-3.6-flash',
+  fallback: process.env.AI_MODEL_FALLBACK,
+  logTag: '[healing-classifier]',
+};
 
 export function isHealingClassification(value: unknown): value is HealingClassification {
   if (!value || typeof value !== 'object') return false;
@@ -42,7 +46,11 @@ export async function classifyRecovery(recovery: RecoverySummary): Promise<Heali
   const persona = fs.readFileSync(PERSONA_FILE, 'utf-8');
 
   const originalLocator = recovery.recoveredSelectors.join(', ') || '(not recorded)';
-  const failureLog = recovery.healedLocators.map((h) => h.why).filter(Boolean).join('\n') || '(no failure detail recorded)';
+  const failureLog =
+    recovery.healedLocators
+      .map((h) => h.why)
+      .filter(Boolean)
+      .join('\n') || '(no failure detail recorded)';
   const healedLocator = recovery.healedLocators.map((h) => h.newLocator).join(', ') || '(not recorded)';
 
   const prompt = [

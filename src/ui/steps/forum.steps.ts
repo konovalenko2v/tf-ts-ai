@@ -19,8 +19,7 @@ export class ForumSteps {
   }
 
   async pickDateOfBirth() {
-    await test.step('Pick date of birth from the date picker', async () =>
-      this.formPage.selectDateOfBirth('6', '1990'));
+    await test.step('Pick date of birth from the date picker', async () => this.formPage.selectDateOfBirth('6', '1990'));
   }
 
   async fillSubjectsAndHobbies() {

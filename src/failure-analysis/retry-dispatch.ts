@@ -21,13 +21,20 @@ export interface RetryVerdict {
   explanation: string;
 }
 
-const MODELS: ModelPair = { primary: process.env.AI_MODEL ?? 'gemini-3.6-flash', fallback: process.env.AI_MODEL_FALLBACK, logTag: '[retry-dispatcher]' };
+const MODELS: ModelPair = {
+  primary: process.env.AI_MODEL ?? 'gemini-3.6-flash',
+  fallback: process.env.AI_MODEL_FALLBACK,
+  logTag: '[retry-dispatcher]',
+};
 
 export function isRetryVerdict(value: unknown): value is RetryVerdict {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return (
-    (v.category === 'CONFIG_ERROR' || v.category === 'INFRA_FLAKE' || v.category === 'ASSERTION_FAILURE' || v.category === 'AI_QUOTA_EXHAUSTED') &&
+    (v.category === 'CONFIG_ERROR' ||
+      v.category === 'INFRA_FLAKE' ||
+      v.category === 'ASSERTION_FAILURE' ||
+      v.category === 'AI_QUOTA_EXHAUSTED') &&
     typeof v.shouldRetry === 'boolean' &&
     (v.retryBudget === 0 || v.retryBudget === 1 || v.retryBudget === 2) &&
     typeof v.explanation === 'string'

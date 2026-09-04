@@ -62,10 +62,7 @@ test.describe('Restful Booker API @ Booking CRUD', () => {
   });
 
   test('GET /booking?firstname=...&lastname=... returns bookings including the one just created', async () => {
-    const ids = await bookingSteps.getBookingIdsFilteredByName(
-      bookingPrec.booking.firstname!,
-      bookingPrec.booking.lastname!,
-    );
+    const ids = await bookingSteps.getBookingIdsFilteredByName(bookingPrec.booking.firstname!, bookingPrec.booking.lastname!);
     expect(ids).toContain(bookingPrec.bookingid);
   });
 
@@ -104,11 +101,7 @@ test.describe('Restful Booker API @ Booking CRUD', () => {
 
   test('PUT /booking/{id} with an invalid token Cookie value should return 403 Forbidden', async () => {
     const created = await createTrackedBooking(bookingData.validBooking());
-    const response = await bookingSteps.updateBooking(
-      created.bookingid,
-      bookingData.validBooking(),
-      'invalid-token-value',
-    );
+    const response = await bookingSteps.updateBooking(created.bookingid, bookingData.validBooking(), 'invalid-token-value');
     expect(response.status()).toBe(403);
   });
 

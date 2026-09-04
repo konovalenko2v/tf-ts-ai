@@ -256,7 +256,19 @@ function runGemini(prompt: string, tierIndex: number, profile: AgenticProfile, c
   try {
     stdout = execFileSync(
       'gemini',
-      ['-p', prompt, '-m', model, '--approval-mode', 'auto_edit', '--skip-trust', '--allowed-tools', profile.geminiAllowedTools, '-o', 'json'],
+      [
+        '-p',
+        prompt,
+        '-m',
+        model,
+        '--approval-mode',
+        'auto_edit',
+        '--skip-trust',
+        '--allowed-tools',
+        profile.geminiAllowedTools,
+        '-o',
+        'json',
+      ],
       // execFileSync's `env` REPLACES the child's environment rather than merging — spread
       // process.env first or the child loses PATH/HOME and fails in ways that look nothing like an
       // auth problem. GEMINI_API_KEY is set explicitly (not just relied on via inheritance) because
@@ -343,7 +355,9 @@ export function runAgenticEdit(prompt: string, profile: AgenticProfile = DEFAULT
     return;
   } catch (err) {
     if (err instanceof CliTimeoutError) throw err;
-    process.stderr.write(`[cli-fallback] claude (${CLAUDE_MODEL}, effort ${CLAUDE_EFFORT}) failed (${(err as Error).message.split('\n')[0]}) — retrying with Gemini\n`);
+    process.stderr.write(
+      `[cli-fallback] claude (${CLAUDE_MODEL}, effort ${CLAUDE_EFFORT}) failed (${(err as Error).message.split('\n')[0]}) — retrying with Gemini\n`,
+    );
   }
 
   const failures: string[] = [];

@@ -15,12 +15,7 @@ const TSCONFIG_PATH = path.join(REPO_ROOT, 'tsconfig.json');
 
 // A change to any of these can affect behavior in ways the import graph can't see (compiler
 // options, CI steps, dependency versions) — never try to scope these, just run everything.
-const FALLBACK_TRIGGERS = [
-  'playwright.config.ts',
-  'tsconfig.json',
-  'package.json',
-  'package-lock.json',
-];
+const FALLBACK_TRIGGERS = ['playwright.config.ts', 'tsconfig.json', 'package.json', 'package-lock.json'];
 
 export interface AffectedResult {
   specs: string[];

@@ -25,9 +25,9 @@ circuit breaker + risk-tiered auto-merge + rollback в `agent-fixer`, AI cost/to
    заголовочном комментарии как "biggest risk". Соседний `safety-gates.ts` (чистые функции) имел
    тесты, а несущий гейт — нет.
 3. **Circuit breaker и rollback ни разу не срабатывали в бою** — `git log --all | grep
-   revert.*agent-fixer` пуст. Написаны и типизируются, но не проверены живым trip'ом.
+revert.*agent-fixer` пуст. Написаны и типизируются, но не проверены живым trip'ом.
 4. **Cost observability не видела самый дорогой AI-вызов** — `reviewer-tests.ts`'s `claude -p
-   --effort high` (paranoid-тир) и `gemini-text.ts` писали AI-вызовы мимо `usage-log.ts`.
+--effort high` (paranoid-тир) и `gemini-text.ts` писали AI-вызовы мимо `usage-log.ts`.
 
 ### Исправления (коммит `1186b15`)
 
@@ -79,6 +79,7 @@ PR #14 и `git log --all | grep revert` вместо доверия commit messa
 ## Что сделано: goal-based тесты (src/goal-evolution/)
 
 Развитие идеи "тест описывает цель, а не шаги". Архитектурная развилка была между:
+
 - **A — runtime goal execution**: агент водит браузер на каждом прогоне теста. Отклонено —
   вернуло бы недетерминированный AI в решающий путь CI, то есть саму причину нескейлируемости
   фреймворка, которую диагностировали в прошлой сессии.
@@ -101,7 +102,7 @@ PR #14 и `git log --all | grep revert` вместо доверия commit messa
 1. **`buttons-dynamic-click`** (UI, `tests/ui/buttons-goal.spec.ts`) — demoqa.com/buttons. Кнопка
    "Click Me" имеет id, регенерируемый при каждой загрузке страницы (`Ii9O4` → `QYyO7`, проверено
    вживую). Агент должен вывести `getByRole('button', {name: 'Click Me'})` вместо хардкода id —
-   доказывает вывод *локатор-стратегии* из поведенческой заметки.
+   доказывает вывод _локатор-стратегии_ из поведенческой заметки.
 2. **`book-store-register-user`** (API, `tests/api/book-store-goal.spec.ts`) — demoqa.com Book
    Store. Форма `/register` защищена reCAPTCHA (проверено: клик Register возвращает "Please
    verify reCaptcha to register!" даже с валидными данными — обход CAPTCHA запрещён политикой).
@@ -156,6 +157,7 @@ scan: ключ этого tier'а → ближайший заданный ран
 loud, если вообще ничего не резолвится (по аналогии с `reviewer-tests.ts`'s `requireProfileVar`).
 
 **Ключи в `.env` (реальные секреты, НЕ в git, gitignored)**:
+
 - `AI_AGENTS_GEMINI_API_KEY` = новый проект `gen-lang-client-0941437171` (tier 0)
 - `AI_AGENTS_GEMINI_API_KEY_FALLBACK` = старый проект (tier 1)
 - `AI_AGENTS_GEMINI_API_KEY_FALLBACK_2` = проект `gen-lang-client-0892906661` (tier 2)
@@ -203,6 +205,7 @@ Self-Evolving Test Suite (след от sed-правки).
 Пользователь спросил, есть ли в персонах агентов, пишущих тесты, правило не использовать
 `claude-in-chrome` (реальный видимый браузер пользователя) вместо headless Playwright. Правила не
 было — добавлено в двух местах:
+
 - `ai-agents/personas/test-developer.md` — общий hard rule для всех агентов, пишущих тесты
   (test-evolution, agent-fixer, goal-solver его наследует).
 - `ai-agents/personas/goal-solver.md` — усилено конкретно для goal-based режима (пункт 1: если

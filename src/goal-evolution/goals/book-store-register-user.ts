@@ -15,20 +15,31 @@ export interface BookStoreRegisterCtx {
 // returned. There is no other way to get it: GenerateToken doesn't echo userId, and the only
 // endpoint that does is POST /Account/v1/User itself. If the driver didn't return one (e.g. it
 // failed before this point), userId is undefined and cleanup is skipped — nothing to delete.
-export async function cleanupUser(request: APIRequestContext, userName: string, password: string, userId: string | undefined): Promise<void> {
+export async function cleanupUser(
+  request: APIRequestContext,
+  userName: string,
+  password: string,
+  userId: string | undefined,
+): Promise<void> {
   if (!userId) {
     process.stderr.write('[book-store-register-user] cleanup skipped — no userId (driver did not report one)\n');
     return;
   }
   const tokenResponse = await request.post(`${config.bookStoreHost}/Account/v1/GenerateToken`, { data: { userName, password } });
   if (tokenResponse.status() !== 200) {
-    process.stderr.write(`[book-store-register-user] cleanup could not get a token (status ${tokenResponse.status()}) — user ${userId} left behind on demoqa.com\n`);
+    process.stderr.write(
+      `[book-store-register-user] cleanup could not get a token (status ${tokenResponse.status()}) — user ${userId} left behind on demoqa.com\n`,
+    );
     return;
   }
   const { token } = await tokenResponse.json();
-  const deleteResponse = await request.delete(`${config.bookStoreHost}/Account/v1/User/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
+  const deleteResponse = await request.delete(`${config.bookStoreHost}/Account/v1/User/${userId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (deleteResponse.status() !== 204) {
-    process.stderr.write(`[book-store-register-user] cleanup DELETE failed (status ${deleteResponse.status()}) — user ${userId} left behind on demoqa.com\n`);
+    process.stderr.write(
+      `[book-store-register-user] cleanup DELETE failed (status ${deleteResponse.status()}) — user ${userId} left behind on demoqa.com\n`,
+    );
   } else {
     process.stderr.write(`[book-store-register-user] cleanup OK — user ${userId} deleted\n`);
   }
@@ -44,7 +55,9 @@ export async function cleanupUser(request: APIRequestContext, userName: string, 
 function checkNoHardcodedIdentity(source: string): string[] {
   const violations: string[] = [];
   if (/userName\s*[:=]\s*['"`][^'"`]+['"`]/.test(source)) {
-    violations.push('driver appears to hardcode a userName instead of accepting it as a parameter — the harness must control the identity the oracle checks');
+    violations.push(
+      'driver appears to hardcode a userName instead of accepting it as a parameter — the harness must control the identity the oracle checks',
+    );
   }
   return violations;
 }
@@ -54,12 +67,12 @@ export const bookStoreRegisterUserGoal: Goal<BookStoreRegisterCtx> = {
   description:
     'Create a new user account for the Book Store on demoqa.com. You will be given a username and ' +
     'password to register with — figure out from the page-knowledge notes which layer of the site ' +
-    "actually lets you do this (not every path documented there necessarily works).",
+    'actually lets you do this (not every path documented there necessarily works).',
   pageKnowledgeFile: 'docs/page-knowledge/book-store-register.md',
   driverFile: 'src/api/clients/book-store.client.ts',
   achieveSignature:
     'export async function achieve(request: APIRequestContext, userName: string, password: string): ' +
-    'Promise<string | undefined> // returns the created user\'s userID (extracted from the 201 response body), ' +
+    "Promise<string | undefined> // returns the created user's userID (extracted from the 201 response body), " +
     'or undefined if registration did not succeed — never the raw APIResponse object',
   contractChecks: checkNoHardcodedIdentity,
   succeedsWhen: async ({ request, userName, password }) => {

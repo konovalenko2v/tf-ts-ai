@@ -80,8 +80,7 @@ async function main(): Promise<void> {
       ? 'No assertion failures had a matching Jira ticket — nothing to triage.'
       : verdicts
           .map(
-            (v) =>
-              `- **${v.testTitlePath}** — ${v.verdict ? 'YES (feature change)' : 'NO (likely bug)'} via ${v.ticketKey}\n  ${v.reason}`,
+            (v) => `- **${v.testTitlePath}** — ${v.verdict ? 'YES (feature change)' : 'NO (likely bug)'} via ${v.ticketKey}\n  ${v.reason}`,
           )
           .join('\n'),
     '',

@@ -188,15 +188,14 @@ async function main(): Promise<void> {
         '',
         'Fixes applied:',
         ...applied.map(
-          (f) => `- \`${f.selector}\` -> \`${f.replacementCode}\` (${f.source === 'cache' ? 'from healwright cache, no AI call' : 'locator-medic AI fallback, no cache match'})`,
+          (f) =>
+            `- \`${f.selector}\` -> \`${f.replacementCode}\` (${f.source === 'cache' ? 'from healwright cache, no AI call' : 'locator-medic AI fallback, no cache match'})`,
         ),
-        ...(unresolved.length > 0
-          ? ['', 'Selectors that still need a human:', ...unresolved.map((s) => `- \`${s}\``)]
-          : []),
+        ...(unresolved.length > 0 ? ['', 'Selectors that still need a human:', ...unresolved.map((s) => `- \`${s}\``)] : []),
         '',
         riskTier === 'auto-merge'
           ? `All fixes in this PR came from the healwright cache (no AI call) — eligible for the fully autonomous path. It auto-merges once the affected test(s) pass ${5}x individually and the affected spec file passes ${2}x as a whole (see .github/workflows/regression.yml's agent-fixer-verify-and-merge job, gated on the \`agent-fixer/cache/\` branch prefix), unless the circuit breaker in that job's history check has tripped. If master's full regression suite fails right after, the merge is auto-reverted and a new issue opens for a human (agent-fixer-rollback job).`
-          : 'At least one fix in this PR came from the AI fallback (locator-medic), not the healwright cache — no runtime evidence backs the replacement, only verify-stability\'s repeated-run evidence that it is *stable*, not that it is *correct*. This PR is held for human review and will NOT auto-merge (branch prefix `agent-fixer/ai/` does not match the auto-merge job\'s trigger).',
+          : "At least one fix in this PR came from the AI fallback (locator-medic), not the healwright cache — no runtime evidence backs the replacement, only verify-stability's repeated-run evidence that it is *stable*, not that it is *correct*. This PR is held for human review and will NOT auto-merge (branch prefix `agent-fixer/ai/` does not match the auto-merge job's trigger).",
         '',
         `See \`${SELF_HEAL_CACHE}\` in this branch for the exact strategy/confidence healwright used to recover the cache-layer fixes at runtime, if closer inspection is needed after the fact — a low-confidence match may be overfit to one page state. locator-medic (AI fallback) fixes have no such record.`,
       ].join('\n'),

@@ -56,9 +56,7 @@ function latestAttemptPerTest(tests: TestSummaryEvent[]): TestSummaryEvent[] {
 // retry 0 and passed at retry 1 is tagged 'flaky' on every attempt record, including the final
 // passing one (which carries no `error`). Use the last *failing* attempt to report what broke.
 function lastFailingAttempt(tests: TestSummaryEvent[], testId: string): TestSummaryEvent | undefined {
-  return tests
-    .filter((t) => t.testId === testId && t.error)
-    .sort((a, b) => b.retry - a.retry)[0];
+  return tests.filter((t) => t.testId === testId && t.error).sort((a, b) => b.retry - a.retry)[0];
 }
 
 export function groupFailures(tests: TestSummaryEvent[]): FailureGroup[] {

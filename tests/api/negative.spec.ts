@@ -6,16 +6,12 @@ import { AuthClient } from '../../src/api/clients/auth.client';
 test.describe('Restful Booker API @ Negative & edge cases', () => {
   const createdBookingIds: number[] = [];
 
-  test('POST /booking with an empty JSON {} should return a client error instead of creating a booking', async ({
-    request,
-  }) => {
+  test('POST /booking with an empty JSON {} should return a client error instead of creating a booking', async ({ request }) => {
     const response = await request.post(`${config.host}/booking`, { data: {} });
     expect(response.status()).toBe(500);
   });
 
-  test('POST /booking with unicode/special characters in the name should be created successfully and stored as-is', async ({
-    request,
-  }) => {
+  test('POST /booking with unicode/special characters in the name should be created successfully and stored as-is', async ({ request }) => {
     const booking = bookingWithNames('Владимир-Ω', "O'Brien & Sons™ 日本語");
     const response = await request.post(`${config.host}/booking`, { data: booking });
 

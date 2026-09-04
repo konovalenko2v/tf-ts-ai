@@ -46,10 +46,7 @@ export default tseslint.config(
 
       // Unused code is a maintenance signal, not a style preference — but an intentionally-unused
       // destructured field (used in the specs to drop a key) stays legal via the ^_ convention.
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
-      ],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true }],
 
       // The codebase already avoids `any` almost entirely (one deliberate Goal<any>); keep it a
       // warning rather than an error so the existing justified case doesn't need an inline

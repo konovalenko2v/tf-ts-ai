@@ -29,7 +29,11 @@ interface SuiteNode {
 // leaf (test) nodes. Walk with the enclosing suite uid threaded down so each leaf can pair its
 // own uid with the uid of the suite one level up (the pair the #suites/<suiteUid>/<testUid>/
 // route expects), and collect every self-healed leaf found along the way.
-function collectSelfHealedTests(node: SuiteNode, parentSuiteUid: string | undefined, out: { name: string; suiteUid: string; testUid: string }[]): void {
+function collectSelfHealedTests(
+  node: SuiteNode,
+  parentSuiteUid: string | undefined,
+  out: { name: string; suiteUid: string; testUid: string }[],
+): void {
   const isLeaf = !node.children || node.children.length === 0;
   if (isLeaf && node.uid && parentSuiteUid && node.tags?.includes('self-healed')) {
     out.push({ name: node.name, suiteUid: parentSuiteUid, testUid: node.uid });

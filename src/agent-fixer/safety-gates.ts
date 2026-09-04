@@ -28,13 +28,13 @@ export interface CircuitBreakerResult {
   reason?: string;
 }
 
-export function checkCircuitBreaker(
-  commitSubjects: string[],
-  opts: { maxMergesInWindow: number },
-): CircuitBreakerResult {
+export function checkCircuitBreaker(commitSubjects: string[], opts: { maxMergesInWindow: number }): CircuitBreakerResult {
   const reverted = commitSubjects.some((s) => s.startsWith('Revert "agent-fixer:'));
   if (reverted) {
-    return { tripped: true, reason: 'a previous agent-fixer auto-merge was reverted in this window — autonomy suspended pending human review' };
+    return {
+      tripped: true,
+      reason: 'a previous agent-fixer auto-merge was reverted in this window — autonomy suspended pending human review',
+    };
   }
 
   const mergeCount = commitSubjects.filter((s) => s.startsWith('agent-fixer:')).length;

@@ -25,11 +25,7 @@ export class BookStoreClient {
   }
 }
 
-export async function achieve(
-  request: APIRequestContext,
-  userName: string,
-  password: string
-): Promise<string | undefined> {
+export async function achieve(request: APIRequestContext, userName: string, password: string): Promise<string | undefined> {
   const client = new BookStoreClient(request);
   const response = await client.createUser(userName, password);
   if (response.status() !== 201) {

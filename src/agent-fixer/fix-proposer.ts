@@ -14,12 +14,7 @@ import { runAgenticEdit } from '../ai-agents/cli-fallback';
 
 const PERSONA_FILE = path.join(__dirname, '../../ai-agents/personas/locator-medic.md');
 
-export function proposeFixWithAI(
-  selector: string,
-  contextName: string,
-  targetFile: string,
-  screenshotPath: string | undefined,
-): void {
+export function proposeFixWithAI(selector: string, contextName: string, targetFile: string, screenshotPath: string | undefined): void {
   const persona = fs.readFileSync(PERSONA_FILE, 'utf-8');
   const task = [
     `In ${targetFile}, find the line calling \`heal.click(this.page.locator('${selector}'), '${contextName}')\`.`,

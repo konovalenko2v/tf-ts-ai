@@ -4,9 +4,7 @@ import { latestRunFile, readEvents } from '../observability/run-file';
 export function findRecoveries(runFile?: string): StepEvent[] {
   const file = runFile ?? latestRunFile();
   if (!file) return [];
-  return readEvents(file).filter(
-    (e): e is StepEvent => e.type === 'step' && e.outcome === 'passed_with_recovery',
-  );
+  return readEvents(file).filter((e): e is StepEvent => e.type === 'step' && e.outcome === 'passed_with_recovery');
 }
 
 // A recovered step's testId identifies the test attempt it belongs to; the screenshot Playwright
@@ -14,9 +12,7 @@ export function findRecoveries(runFile?: string): StepEvent[] {
 export function findScreenshotForTest(testId: string, runFile?: string): string | undefined {
   const file = runFile ?? latestRunFile();
   if (!file) return undefined;
-  const testEvent = readEvents(file).find(
-    (e): e is TestSummaryEvent => e.type === 'test' && e.testId === testId,
-  );
+  const testEvent = readEvents(file).find((e): e is TestSummaryEvent => e.type === 'test' && e.testId === testId);
   return testEvent?.artifacts.find((a) => a.name === 'screenshot')?.path;
 }
 

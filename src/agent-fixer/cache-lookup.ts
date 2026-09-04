@@ -21,10 +21,7 @@ export function loadHealedCache(json: string): Record<string, HealedStrategy> {
   return JSON.parse(json);
 }
 
-export function findByContext(
-  cache: Record<string, HealedStrategy>,
-  contextName: string,
-): HealedStrategy | undefined {
+export function findByContext(cache: Record<string, HealedStrategy>, contextName: string): HealedStrategy | undefined {
   return Object.values(cache).find((entry) => entry.context === contextName);
 }
 

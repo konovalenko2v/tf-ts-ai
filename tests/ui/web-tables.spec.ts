@@ -4,7 +4,14 @@ import { WebTablesSteps } from '../../src/ui/steps/web-tables.steps';
 test.describe('DemoQA UI @ Web Tables', () => {
   test('Adds a new record and it appears in the table', async ({ page }) => {
     const steps = new WebTablesSteps(page);
-    const record = { firstName: 'Ada', lastName: 'Lovelace', email: 'ada.lovelace@example.com', age: '30', salary: '50000', department: 'Engineering' };
+    const record = {
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'ada.lovelace@example.com',
+      age: '30',
+      salary: '50000',
+      department: 'Engineering',
+    };
 
     await steps.openWebTablesPage();
     await steps.openAddModal();
@@ -46,7 +53,14 @@ test.describe('DemoQA UI @ Web Tables', () => {
 
     await steps.openWebTablesPage();
     await steps.openAddModal();
-    await steps.fillForm({ firstName: 'Alan', lastName: 'Turing', email: 'alan.turing@example.com', age: 'abc', salary: '70000', department: 'Cryptography' });
+    await steps.fillForm({
+      firstName: 'Alan',
+      lastName: 'Turing',
+      email: 'alan.turing@example.com',
+      age: 'abc',
+      salary: '70000',
+      department: 'Cryptography',
+    });
     await steps.submitForm();
     await steps.verifyModalStillOpen();
     await steps.verifyFieldInvalid('age');

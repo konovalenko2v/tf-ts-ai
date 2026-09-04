@@ -70,7 +70,9 @@ function main(): void {
   const printTable = (title: string, rows: Map<string, Bucket>) => {
     process.stdout.write(`\n${title}\n`);
     for (const [key, b] of rows) {
-      const cost = b.costUsdKnown ? `$${b.costUsd.toFixed(4)}` : 'n/a (no cost figure for any call in this row — Gemini reports tokens only, and/or every call failed before reporting usage)';
+      const cost = b.costUsdKnown
+        ? `$${b.costUsd.toFixed(4)}`
+        : 'n/a (no cost figure for any call in this row — Gemini reports tokens only, and/or every call failed before reporting usage)';
       process.stdout.write(
         `  ${key.padEnd(20)} calls=${b.calls} (ok=${b.successes} fail=${b.failures} timeout=${b.timeouts})  ` +
           `tokens in/out=${b.inputTokens}/${b.outputTokens}  cost=${cost}\n`,

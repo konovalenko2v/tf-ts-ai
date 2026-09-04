@@ -51,7 +51,9 @@ test.describe('groupFailures — categorization', () => {
 
   test('categorizes a failure whose stack trace passes through healwright as "ai-healing" even without HealError in the message', () => {
     const groups = groupFailures([
-      makeTest({ error: { message: 'TypeError: cannot read property of undefined', stackTop: ['at heal.click (healwright/dist/index.js:42:1)'] } }),
+      makeTest({
+        error: { message: 'TypeError: cannot read property of undefined', stackTop: ['at heal.click (healwright/dist/index.js:42:1)'] },
+      }),
     ]);
     expect(groups[0].category).toBe('ai-healing');
   });
@@ -175,7 +177,7 @@ test.describe('summarizeRecoveries', () => {
     expect(result[0].healedLocators[0].confidence).toBe(0.9);
   });
 
-  test('excludes a heal event whose timestamp falls outside the step\'s time window', () => {
+  test("excludes a heal event whose timestamp falls outside the step's time window", () => {
     const steps = [makeStep({})];
     const healEvents: HealEvent[] = [
       {
