@@ -20,7 +20,7 @@ duplicate README content here; link to its section (`README.md#N`) instead.
 | Jira red-test triage                                 | `src/jira-triage/`                                                                                                                       | README §6                   |
 | Self-evolving test suite (new edge-case test → PR)   | `src/test-evolution/`                                                                                                                    | README §7                   |
 | Goal-based tests (prose goal → agent-written driver) | `src/goal-evolution/` (`goal.ts`, `goals/*.ts`, `run.ts`, `propose-driver.ts`)                                                           | README §8                   |
-| Page-knowledge cache (per-page DOM/behavior notes)   | `docs/page-knowledge/*.md` — currently `text-box.md`, `check-box.md`, `buttons.md`, `book-store-register.md`                             | README §9                   |
+| Page-knowledge cache (per-page DOM/behavior notes)   | `docs/page-knowledge/*.md` — currently `text-box.md`, `check-box.md`, `buttons.md`, `book-store-register.md`, `web-tables.md`            | README §9                   |
 | AI personas / model tiers                            | `ai-agents/personas/*.md` (system prompts), `ai-agents/profiles/{cheap,paranoid}.env`, `src/ai-agents/cli-fallback.ts`, `gemini-text.ts` | README §10                  |
 | Env vars / config                                    | `src/core/config.ts`, `src/core/global-setup.ts` (fails fast on missing vars), `.env.example` (full inventory)                           | —                           |
 | CI pipeline                                          | `.github/workflows/regression.yml`                                                                                                       | —                           |
@@ -70,7 +70,11 @@ npm run qa-analyst -- <requirement-file>
 
 - `CLAUDE.local.md` (gitignored, not checked in) holds session-specific working notes/decisions —
   check it for recent context this file doesn't carry.
-- README's "Not yet built" section is stale on one point: it says only Text Box/Check Box are
-  documented under `docs/page-knowledge/` — as of this writing there are four files (also
-  `buttons.md`, `book-store-register.md`). Verify against the directory listing, not the README
-  prose, before relying on that claim.
+- Counts of files in `docs/page-knowledge/` appear in both this file and README's "Not yet built"
+  section. Both were stale before and have been corrected to five; still trust the directory
+  listing over either prose claim, since a new page gets documented more often than these lines
+  get updated.
+- `npm run lint` / `format:check` / `typecheck` are hard CI gates. Both AI writers (`agent-fixer`,
+  `test-evolution`) therefore run `prettier --write` on the file they generate before committing —
+  do not remove that step, or every AI-authored PR goes red on style and the auto-merge path
+  silently stops firing.
