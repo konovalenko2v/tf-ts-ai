@@ -1,0 +1,9 @@
+node_modules/
+coverage/
+allure-report/
+allure-results/
+playwright-report/
+test-results/
+.observability/
+.self-heal/
+package-lock.json

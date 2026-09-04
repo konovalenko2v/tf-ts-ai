@@ -31,11 +31,27 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      # tsx (every npm script here) strips types without checking them, and Playwright's own runner
+      # does the same — so nothing else in this pipeline would catch a type error before it reached
+      # master. Runs before the browser install (which takes ~1 min) so a type error fails fast.
+      - name: Type check
+        run: npm run typecheck
+
+      # eslint.config.mjs treats the pre-existing `response.json()` -> any warnings as warnings, so
+      # this gate is about NEW errors only (floating promises, unsafe non-null handling): --max-warnings
+      # is deliberately not set to 0 while that backlog stands, otherwise the gate would be red on
+      # arrival and get ignored.
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -66,7 +82,13 @@ jobs:
       # gets a coverage number even when an unrelated api/ui test in the same run is red.
       - name: Coverage report (unit)
         if: always()
+        # pipefail: without it the step's exit code comes from `tee`, which always succeeds — a
+        # coverage run that crashed outright would still report as a green step with an empty
+        # summary. The report itself is informational (no threshold gate), but "the tool failed to
+        # run" and "the tool ran and found low coverage" must not look identical.
+        shell: bash
         run: |
+          set -o pipefail
           npm run coverage 2>&1 | tee coverage-output.txt
           {
             echo "## Test coverage (unit)"
@@ -164,7 +186,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
 
       - name: Install dependencies
@@ -222,7 +244,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
 
       - name: Install dependencies
@@ -296,7 +318,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
 
       - name: Install dependencies

@@ -1,5 +1,9 @@
 import * as path from 'path';
 
+// Matching the ESC control character is the entire point here: Playwright's TestError.message
+// carries raw ANSI colour codes, and stripping them is what makes the recorded error cheap for an
+// LLM to read later.
+// eslint-disable-next-line no-control-regex
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
 export function stripAnsi(input: string): string {

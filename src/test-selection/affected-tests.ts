@@ -54,6 +54,10 @@ function findSpecFiles(dir: string): string[] {
 }
 
 function loadCompilerOptions(): ts.CompilerOptions {
+  // ts.readConfigFile's documented signature takes ts.sys.readFile as a bare callback; ts.sys is a
+  // namespace object whose methods don't rely on `this`, so passing it unbound is the intended
+  // usage, not a scoping bug.
+  // eslint-disable-next-line @typescript-eslint/unbound-method
   const configFile = ts.readConfigFile(TSCONFIG_PATH, ts.sys.readFile);
   if (configFile.error) {
     throw new Error(`Failed to read tsconfig.json: ${ts.flattenDiagnosticMessageText(configFile.error.messageText, '\n')}`);

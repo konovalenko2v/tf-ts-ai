@@ -222,7 +222,7 @@ function runClaude(prompt: string, profile: AgenticProfile, caller: string, time
       failureReason: (err as Error).message?.split('\n')[0],
     });
     if (isTimeout) {
-      throw new CliTimeoutError(`claude (${CLAUDE_MODEL}, effort ${CLAUDE_EFFORT})`, timeoutMs as number);
+      throw new CliTimeoutError(`claude (${CLAUDE_MODEL}, effort ${CLAUDE_EFFORT})`, timeoutMs);
     }
     throw err;
   }

@@ -53,7 +53,7 @@ async function jiraFetch<T>(path: string): Promise<T> {
 
 export async function getIssue(key: string, fields: string[]): Promise<JiraIssue> {
   const query = new URLSearchParams({ fields: fields.join(',') });
-  return jiraFetch<JiraIssue>(`/rest/api/3/issue/${encodeURIComponent(key)}?${query}`);
+  return jiraFetch<JiraIssue>(`/rest/api/3/issue/${encodeURIComponent(key)}?${query.toString()}`);
 }
 
 export async function getSubtasks(parentKey: string, fields: string[]): Promise<JiraIssue[]> {
@@ -63,7 +63,7 @@ export async function getSubtasks(parentKey: string, fields: string[]): Promise<
     jql: `parent = ${parentKey}`,
     fields: fields.join(','),
   });
-  const result = await jiraFetch<{ issues: JiraIssue[] }>(`/rest/api/3/search/jql?${query}`);
+  const result = await jiraFetch<{ issues: JiraIssue[] }>(`/rest/api/3/search/jql?${query.toString()}`);
   return result.issues;
 }
 

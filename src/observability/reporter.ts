@@ -4,6 +4,10 @@ import * as crypto from 'crypto';
 import type { FullConfig, FullResult, Reporter, Suite, TestCase, TestError, TestResult, TestStep } from '@playwright/test/reporter';
 import { capStackFrames, stripAnsi, toRelativePath, truncate } from './sanitize';
 import { ObservabilityEvent, RecoveredError, StepError, StepTarget } from './types';
+// Recorded in the run header so a stored run can be read back knowing which Playwright produced
+// it. Imported (resolveJsonModule) rather than require()d — the rest of this file is ES imports,
+// and the JSON import is type-checked instead of cast.
+import { version as playwrightVersion } from '@playwright/test/package.json';
 
 const MESSAGE_BYTE_BUDGET = 2048;
 const STACK_FRAME_LIMIT = 10;
@@ -53,7 +57,7 @@ export default class ObservabilityReporter implements Reporter {
       runId: this.runId,
       startedAt: new Date().toISOString(),
       ci: this.ci,
-      playwrightVersion: (require('@playwright/test/package.json') as { version: string }).version,
+      playwrightVersion,
       projects: config.projects.map((p) => p.name),
     });
   }

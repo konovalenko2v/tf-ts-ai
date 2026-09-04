@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "AI-native QA automation suite: REST, GraphQL and UI test coverage (TypeScript + Playwright), with AI as part of the framework architecture",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "test": "playwright test",
     "test:api": "playwright test --project=api",
@@ -11,6 +14,11 @@
     "test:unit": "playwright test --project=unit",
     "coverage": "c8 --reporter=text --reporter=lcov --reporter=text-summary -o coverage playwright test --project=unit",
     "test:affected": "tsx src/test-selection/run.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "report": "playwright show-report",
     "allure:generate": "allure generate allure-results --clean -o allure-report",
     "allure:serve": "allure serve allure-results",
@@ -26,17 +34,23 @@
     "agent-fixer:circuit-breaker": "tsx src/agent-fixer/circuit-breaker.ts"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.48.0",
-    "@types/node": "^22.10.0",
+    "@types/node": "^24.13.3",
     "allure-commandline": "^2.34.0",
-    "allure-playwright": "^3.0.0",
+    "allure-js-commons": "^3.12.0",
+    "allure-playwright": "^3.12.0",
     "c8": "^12.0.0",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.69.0"
   },
   "dependencies": {
-    "@faker-js/faker": "^9.2.0",
-    "dotenv": "^16.4.5",
+    "@faker-js/faker": "^10.6.0",
+    "dotenv": "^17.4.2",
     "healwright": "^1.7.0"
   }
 }
