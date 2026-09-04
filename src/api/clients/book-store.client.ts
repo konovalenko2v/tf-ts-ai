@@ -2,6 +2,7 @@ import { APIRequestContext } from '@playwright/test';
 import { config } from '../../core/config';
 
 const ACCOUNT_PATH = '/Account/v1';
+const BOOKSTORE_PATH = '/BookStore/v1';
 
 export class BookStoreClient {
   constructor(private readonly request: APIRequestContext) {}
@@ -10,6 +11,10 @@ export class BookStoreClient {
     return this.request.post(`${config.bookStoreHost}${ACCOUNT_PATH}/User`, {
       data: { userName, password },
     });
+  }
+
+  async getBooks() {
+    return this.request.get(`${config.bookStoreHost}${BOOKSTORE_PATH}/Books`);
   }
 
   async generateToken(userName: string, password: string) {
