@@ -1,0 +1,9 @@
+# Default owner for everything not matched below.
+* @konovalenko2v
+
+# CI, the merge/rollback gates, and the circuit breaker decide what gets auto-merged without a
+# human in the loop — a change here needs the same reviewer as the rest of the repo today, but the
+# entry exists so a future second maintainer is required explicitly, not by accident of who else
+# happens to be free.
+/.github/workflows/ @konovalenko2v
+/src/agent-fixer/ @konovalenko2v

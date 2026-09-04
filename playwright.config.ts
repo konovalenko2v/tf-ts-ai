@@ -6,6 +6,15 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
+  // Playwright has no per-attempt hook to grant or deny a retry based on why the previous attempt
+  // failed — `retries` above is a single static number, decided before the run starts. A per-test
+  // "smart" retry budget (see failure-analysis's retry-dispatcher) is therefore not reachable
+  // without replacing the runner. maxFailures is the reachable version of the same idea in CI:
+  // once a genuinely unfixable cause (e.g. an exhausted AI quota) starts failing tests, stop the
+  // run instead of burning the full retry budget on every remaining test to rediscover the same
+  // cause. 10 is deliberately above this suite's normal failure count (single digits) so a run
+  // with a handful of real, unrelated failures still completes and reports all of them.
+  maxFailures: process.env.CI ? 10 : undefined,
   reporter: [
     ['list'],
     ['html', { open: 'never' }],
