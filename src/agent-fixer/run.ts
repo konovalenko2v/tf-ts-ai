@@ -150,6 +150,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Format before type-checking, not after: CI's `Format check` step (regression.yml) is a hard
+  // gate on the `test` job, and agent-fixer-verify-and-merge only runs on needs.test success — so
+  // an unformatted AI edit here would not merely look untidy, it would silently disable the
+  // auto-merge path entirely. The AI writes the fix; Prettier owns its layout.
+  execFileSync('npx', ['prettier', '--write', TARGET_FILE], { stdio: 'inherit' });
   execFileSync('npx', ['tsc', '--noEmit'], { stdio: 'inherit' });
 
   // Risk tier (see safety-gates.ts): a cache-sourced fix is a locator healwright already

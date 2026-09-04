@@ -117,6 +117,10 @@ async function main(): Promise<void> {
   const { describe, tests } = extractTestTitles(OUTPUT_FILE);
   const results = readTestResults();
 
+  // Same reason as agent-fixer/run.ts: CI's `Format check` is a hard gate, so an AI-authored file
+  // that Prettier would reformat turns the resulting PR red on style alone. Formatting happens
+  // after the test has already been run and reviewed, so it can't change what was verified.
+  execFileSync('npx', ['prettier', '--write', OUTPUT_FILE], { stdio: 'inherit' });
   execFileSync('npx', ['tsc', '--noEmit'], { stdio: 'inherit' });
 
   execFileSync('git', ['add', OUTPUT_FILE], { stdio: 'inherit' });
