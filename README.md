@@ -19,7 +19,7 @@ self-repair, test selection, and triage.
 | 5   | [Affected-Test Selection](#5-affected-test-selection)         | 🟢 100% | Runs only the specs a change can actually affect, via a real TS import graph                                                                                                                                                                                                        | Faster PR feedback — a one-file change doesn't have to wait for the entire suite to run before you know if it broke something                                                                                                                                                       |
 | 6   | [Jira-Driven Red-Test Triage](#6-jira-driven-red-test-triage) | 🟡 ~60% | Reads Jira context for a failing assertion, verdicts bug vs. intentional change                                                                                                                                                                                                     | **Triage** = sorting failures by what actually needs attention. A red test isn't automatically a bug — it might just be asserting old, now-intentionally-changed behavior. This tells you which, using the ticket that likely caused it, instead of a human having to go look it up |
 | 7   | [Self-Evolving Test Suite](#7-self-evolving-test-suite)       | 🟡 ~70% | AI proposes a new edge-case test, only opens a PR if it demonstrably passes                                                                                                                                                                                                         | Grows coverage without waiting for a human to think up every edge case — but only ever proposes a test it already proved passes, never an unverified guess                                                                                                                          |
-| 8   | [Goal-Based Tests](#8-goal-based-tests)                       | 🟡 demo | Agent resolves a plain-English goal into a driver, from page-knowledge alone, judged by a fixed human-written oracle it never sees                                                                                                                                                  | Proves the framework's pieces (page-knowledge, personas, CLI fallback) compose into "describe intent, not steps" — deliberately one demo goal, not a general capability yet                                                                                                         |
+| 8   | [Goal-Based Tests](#8-goal-based-tests)                       | 🟡 demo | Agent resolves a plain-English goal into a driver, from page-knowledge alone, judged by a fixed human-written oracle it never sees                                                                                                                                                  | Proves the framework's pieces (page-knowledge, personas, CLI fallback) compose into "describe intent, not steps" — deliberately a handful of demo goals, not a general capability yet                                                                                               |
 | 9   | [Page Knowledge Cache](#9-page-knowledge-cache)               | 🟢 100% | Committed per-page DOM/behavior notes — skip re-exploring a page already documented                                                                                                                                                                                                 | Saves real time/tokens — writing a test for a page already explored once doesn't require opening a browser and re-discovering its structure from scratch                                                                                                                            |
 | 10  | [AI Agent Personas](#10-ai-agent-personas)                    | 🟡 ~80% | Standardized personas (test-developer, locator-medic, reviewer-tests, qa-analyst, goal-solver) with a 4-tier CLI fallback (Claude + 3 Gemini models, optionally on separate API keys) and a separate review-tier model                                                              | One place to read/edit what each AI role is instructed to do, instead of an inline prompt string buried in each module — and a second, differently-modeled review gate before a generated test ships                                                                                |
 | 11  | [Retry Verdicts](#4-failure-analysis)                         | 🟢 100% | Names why each failure cause is or isn't worth retrying; the AI dispatcher adds a categorised advisory verdict for causes the rule-based table can't name; a missing credential is caught before any retry is spent and `maxFailures` aborts the run on a genuinely unfixable cause | Makes retry cost visible and acts on the two cases that are actually reachable in Playwright — a true per-test dynamic budget isn't (see "Not yet built")                                                                                                                           |
@@ -466,7 +466,7 @@ not wired into `regression.yml` yet.
 ## 8. Goal-Based Tests
 
 ```bash
-npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user (default: buttons-dynamic-click)
+npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user | book-store-remove-books (default: buttons-dynamic-click)
 ```
 
 `src/goal-evolution/` is a different kind of test authoring than [Self-Evolving Test
@@ -501,7 +501,7 @@ the driver is clean but the **oracle** fails — retried up to `MAX_ATTEMPTS` (2
 the goal's `pageKnowledgeFile` as the likely cause, since a clean driver failing the oracle repeatedly is usually
 the page-knowledge file being wrong or stale, not an agent mistake.
 
-**Two goals, two things each proves:**
+**Three goals, three things each proves:**
 
 - `buttons-dynamic-click` (UI) — the agent has to infer a _locator strategy_ from a behavior note (an id that's
   regenerated on every page load), not just copy a locator out of the page-knowledge table.
@@ -514,10 +514,31 @@ book-store-register.md` documents _two_ possible paths (a CAPTCHA-blocked UI for
   independently (`GenerateToken` + a duplicate-registration check) rather than trusting the driver's own response,
   and the spec cleans up the created user via `DELETE` in a `finally` block (confirmed live: cleanup logs the
   actual `DELETE` response status, not just "it ran").
+- `book-store-remove-books` (UI) — the harness creates a throwaway account and adds 2 books via the existing
+  `BookStoreClient.addBookToCollection`, then the agent must remove both, one at a time, through the per-row
+  `#delete-record-<ISBN>` control — a `contractChecks` rejects any driver that reaches for the page's bulk
+  "Delete All Books" shortcut instead. Confirmed live that this control opens a React confirm modal rather than
+  deleting immediately (`#closeSmallModal-ok`, not discoverable via `getByRole('button', { name: 'OK' })`, which
+  is ambiguous on this page), documented in `docs/page-knowledge/book-store-login.md` before the agent ran. The
+  oracle re-derives proof independently — a fresh token (generated _after_ the browser work, since a token minted
+  before UI login was rejected afterward) followed by `GET /Account/v1/User/{id}` confirming the account still
+  exists with an empty `books` array — plus a UI-side reload confirming zero rows, rather than trusting the
+  driver's own page state.
+  > [!NOTE]
+  > Not a clean one-shot agent solve: attempt 1 timed out (unrelated), and attempt 2's overall approach — login,
+  > per-row ISBN extraction from the row's `href`, `#delete-record-<ISBN>` → `#closeSmallModal-ok`, no bulk
+  > shortcut — was correct, but its row-count wait used `page.waitForFunction` with a browser-context `document`
+  > callback, which doesn't compile under this repo's `tsconfig.json` (`lib: ["ES2022"]`, no `dom`). A human
+  > replaced that one wait with a bounded poll loop; nothing else in the file changed. No file in `src/` uses
+  > `page.evaluate`/`waitForFunction`, so the agent had no in-repo pattern to copy and `propose-driver.ts` never
+  > states the DOM lib is unavailable — a prompt/example gap, not an agent mistake, in the same spirit as the
+  > `achieveSignature` note in `goal.ts`.
 
 > [!NOTE]
-> This is a **demo-scale example**, not a general framework: two goals, two target pages/endpoints deliberately
-> chosen to have no existing Page Object/client, no CI wiring, no branch/PR flow like `test-evolution` has.
+> This is a **demo-scale example**, not a general framework: three goals, deliberately chosen to have no CI wiring
+> and no branch/PR flow like `test-evolution` has. The first two goals also had no existing Page Object/client to
+> build on; `book-store-remove-books` is the exception — it reuses `BookStoreLoginPage`, since exercising reuse of
+> an existing Page Object is itself part of what that goal demonstrates.
 > Runtime goal execution (an agent driving the browser/API live on every test run, rather than resolving the goal
 > once into a deterministic spec) was considered and rejected — it would reintroduce AI into the decisive path of
 > every CI run, which is the opposite of what this framework is trying to move away from.
