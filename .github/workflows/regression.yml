@@ -70,6 +70,8 @@ jobs:
         env:
           BOOKER_USERNAME: ${{ vars.BOOKER_USERNAME }}
           USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
+          BOOK_STORE_USERNAME: ${{ secrets.BOOK_STORE_USERNAME }}
+          BOOK_STORE_PASSWORD: ${{ secrets.BOOK_STORE_PASSWORD }}
           SELF_HEAL: '1'
           AI_PROVIDER: 'google'
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
