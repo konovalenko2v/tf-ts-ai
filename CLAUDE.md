@@ -41,7 +41,7 @@ npm run allure:generate / allure:serve
 npm run agent-fixer            # heal cache -> source-code fix -> PR
 npm run failure-analysis       # cause grouping + retry verdicts from an observability run
 npm run test-evolution         # AI proposes + runs + PRs one new edge-case test
-npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user
+npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user | book-store-remove-books
 npm run jira-triage [observability-run-file]   # defaults to latest .observability/run-*.jsonl
 npm run qa-analyst -- <requirement-file>
 ```

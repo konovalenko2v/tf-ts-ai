@@ -30,6 +30,7 @@ import { CliTimeoutError } from '../ai-agents/cli-fallback';
 import { Goal } from './goal';
 import { buttonsDynamicClickGoal } from './goals/buttons-dynamic-click';
 import { bookStoreRegisterUserGoal } from './goals/book-store-register-user';
+import { bookStoreRemoveBooksGoal } from './goals/book-store-remove-books';
 
 const MAX_ATTEMPTS = 2; // see book-store-register-user.ts: each attempt can register a real user
 // on a third-party server, so this is an orphan-account multiplier, not just a token budget —
@@ -58,6 +59,11 @@ const REGISTRY: Record<string, RunEntry> = {
     goal: bookStoreRegisterUserGoal,
     specFile: 'tests/api/book-store-goal.spec.ts',
     project: 'api',
+  },
+  'book-store-remove-books': {
+    goal: bookStoreRemoveBooksGoal,
+    specFile: 'tests/ui/book-store-remove-books-goal.spec.ts',
+    project: 'ui',
   },
 };
 
