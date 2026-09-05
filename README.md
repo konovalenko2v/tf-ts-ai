@@ -23,7 +23,8 @@ self-repair, test selection, and triage.
 | 9   | [Page Knowledge Cache](#9-page-knowledge-cache)               | 🟢 100% | Committed per-page DOM/behavior notes — skip re-exploring a page already documented                                                                                                                                                                                                 | Saves real time/tokens — writing a test for a page already explored once doesn't require opening a browser and re-discovering its structure from scratch                                                                                                                            |
 | 10  | [AI Agent Personas](#10-ai-agent-personas)                    | 🟡 ~80% | Standardized personas (test-developer, locator-medic, reviewer-tests, qa-analyst, goal-solver) with a 4-tier CLI fallback (Claude + 3 Gemini models, optionally on separate API keys) and a separate review-tier model                                                              | One place to read/edit what each AI role is instructed to do, instead of an inline prompt string buried in each module — and a second, differently-modeled review gate before a generated test ships                                                                                |
 | 11  | [Retry Verdicts](#4-failure-analysis)                         | 🟢 100% | Names why each failure cause is or isn't worth retrying; the AI dispatcher adds a categorised advisory verdict for causes the rule-based table can't name; a missing credential is caught before any retry is spent and `maxFailures` aborts the run on a genuinely unfixable cause | Makes retry cost visible and acts on the two cases that are actually reachable in Playwright — a true per-test dynamic budget isn't (see "Not yet built")                                                                                                                           |
-| 12  | Intent-Based Testing + **draft** PR on a jira-triage verdict  |  ⚪ 0%  | Not built — jira-triage stops at the verdict, no fix generation. If built: draft PR only, never auto-merge                                                                                                                                                                          | Would close the loop #6 opens: once triage confirms "this test is just outdated," propose the updated test instead of leaving a human to rewrite it — but an AI that edits a failing test until it passes is a machine for producing green meaningless tests, so a human must merge |
+| 12  | [PR Review Gate](#11-pr-review-gate)                          | 🟡 ~80% | Reviews every PR's full diff against this repo's own hard rules, blocks the merge on a `major` finding                                                                                                                                                                              | The only check that reads a change as a _whole_ rather than running it — and the only thing standing between agent-fixer's autonomous auto-merge and `master`. Advisory for a human clicking merge until branch protection is enabled by hand (see §11)                             |
+| 13  | Intent-Based Testing + **draft** PR on a jira-triage verdict  |  ⚪ 0%  | Not built — jira-triage stops at the verdict, no fix generation. If built: draft PR only, never auto-merge                                                                                                                                                                          | Would close the loop #6 opens: once triage confirms "this test is just outdated," propose the updated test instead of leaving a human to rewrite it — but an AI that edits a failing test until it passes is a machine for producing green meaningless tests, so a human must merge |
 
 🟢 built and wired into CI · 🟡 built, partially wired or with a known gap · ⚪ not built yet
 
@@ -154,7 +155,8 @@ src/
 ├── jira-triage/            Jira context collection + bug/feature verdict (#6)
 ├── test-evolution/         AI-generated edge-case test, runs it, proposes a PR only if it passes (#7)
 ├── goal-evolution/         goal-in-plain-English → agent-written driver, judged by a fixed oracle (#8)
-└── ai-agents/              shared CLI fallback, Gemini text/verdict helper, reviewer-tests, qa-analyst (#10)
+└── ai-agents/              shared CLI fallback, Gemini text/verdict helper, shared review-verdict
+                            grammar, reviewer-tests, pr-reviewer (#11), qa-analyst (#10)
 tests/
 ├── api/                  auth.spec.ts, booking-crud.spec.ts, negative.spec.ts, book-store-goal.spec.ts (+ test-evolution output)
 ├── graphql/               positive.spec.ts, negative.spec.ts
@@ -162,13 +164,16 @@ tests/
 docs/
 └── page-knowledge/       one markdown file per DemoQA page under test (#9)
 ai-agents/
-├── personas/             system prompt per AI role — qa-analyst, test-developer, locator-medic, reviewer-tests, goal-solver (#10)
+├── personas/             system prompt per AI role — qa-analyst, test-developer, locator-medic,
+│                          reviewer-tests, goal-solver, healing-classifier, retry-dispatcher,
+│                          pr-reviewer (#11), reporter (docs-only convention) (#10)
 └── profiles/              cheap.env (Claude Sonnet 5 primary, Gemini reserve) / paranoid.env (review tier) (#10)
 resources/
 ├── GQL/                  test GraphQL queries (*.json)
 └── files/                 upload-test.txt for the UI test
 .github/workflows/
-└── regression.yml        test → failure-analysis → Allure/Pages deploy, + jira-triage (PR) and agent-fixer (master)
+└── regression.yml        test → failure-analysis → Allure/Pages deploy, + pr-review (PR, merge gate),
+                           jira-triage (PR) and agent-fixer (master)
 ```
 
 ## Endpoint Coverage (REST)
@@ -549,7 +554,13 @@ ai-agents/
 │   ├── test-developer.md  writes test code — hard rule: only existing Page Objects/clients/steps,
 │   │                      never a new abstraction (was test-evolution's inline prompt)
 │   ├── locator-medic.md   fixes one broken locator in source (was agent-fixer's inline prompt)
-│   └── reviewer-tests.md  read-only architecture/style review, VERDICT/REASON output
+│   ├── reviewer-tests.md  read-only architecture/style review of ONE generated test file
+│   ├── pr-reviewer.md     read-only review of a whole PR diff — the merge gate (#11)
+│   ├── goal-solver.md     plain-English goal → driver, never the oracle (#8)
+│   ├── healing-classifier.md  categorises why a locator needed healing (#4)
+│   ├── retry-dispatcher.md    advisory retry verdict for a failure cause (#4)
+│   └── reporter.md        rendering convention for failure-analysis/test-evolution markdown —
+│                          read by a human, not loaded by any script at runtime
 └── profiles/             env files controlling which model tier a role runs on
     ├── cheap.env           generation tier: Claude (Sonnet 5, --effort medium) writes first; three
     │                       Gemini models (AI_AGENTS_MODEL/_FALLBACK/_FALLBACK_2, separate from
@@ -563,19 +574,28 @@ ai-agents/
                              the same effort as generation defeats the point of a paranoid pass
 ```
 
-| Persona          | Lives in                               | Wired into                                                                                                                                              |
-| ---------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test-developer` | `src/test-evolution/propose-test.ts`   | `npm run test-evolution`                                                                                                                                |
-| `locator-medic`  | `src/agent-fixer/fix-proposer.ts`      | `npm run agent-fixer` (layer 2, cache-miss fallback)                                                                                                    |
-| `reviewer-tests` | `src/ai-agents/reviewer-tests.ts`      | `npm run test-evolution`, as a second gate after the generated test already passed a real run                                                           |
-| `goal-solver`    | `src/goal-evolution/propose-driver.ts` | `npm run goal-evolution` — extends `test-developer`, resolves a plain-English goal into a driver, never writes the oracle                               |
-| `qa-analyst`     | `src/ai-agents/qa-analyst.ts`          | `npm run qa-analyst -- <requirement-file>` — standalone, not wired into CI (a requirement has no fixed file location the way an observability run does) |
+| Persona              | Lives in                                   | Wired into                                                                                                                                              |
+| -------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test-developer`     | `src/test-evolution/propose-test.ts`       | `npm run test-evolution`                                                                                                                                |
+| `locator-medic`      | `src/agent-fixer/fix-proposer.ts`          | `npm run agent-fixer` (layer 2, cache-miss fallback)                                                                                                    |
+| `reviewer-tests`     | `src/ai-agents/reviewer-tests.ts`          | `npm run test-evolution`, as a second gate after the generated test already passed a real run                                                           |
+| `goal-solver`        | `src/goal-evolution/propose-driver.ts`     | `npm run goal-evolution` — extends `test-developer`, resolves a plain-English goal into a driver, never writes the oracle                               |
+| `qa-analyst`         | `src/ai-agents/qa-analyst.ts`              | `npm run qa-analyst -- <requirement-file>` — standalone, not wired into CI (a requirement has no fixed file location the way an observability run does) |
+| `pr-reviewer`        | `src/ai-agents/pr-reviewer.ts`             | `npm run pr-review -- <pr-number>`, and the `pr-review` CI job — reviews a whole PR diff, blocks the merge on a `major` finding (#11)                   |
+| `healing-classifier` | `src/failure-analysis/healing-classify.ts` | `npm run failure-analysis` — categorises why a locator needed healing (#4)                                                                              |
+| `retry-dispatcher`   | `src/failure-analysis/retry-dispatch.ts`   | `npm run failure-analysis` — advisory retry verdict for a cause the rule-based table can't name (#4)                                                    |
 
 > [!IMPORTANT]
 > `reviewer-tests` is **advisory, not a gate that blocks the PR** — a CLI/API failure here falls through to
 > "proceed without a review verdict" rather than discarding an already-verified-passing test. The point is a
 > second opinion from a different model tier surfaced in the PR body, not a second pass/fail hurdle a flaky review
 > call could block on.
+>
+> `pr-reviewer` (#11) is the one that **does** block, and the distinction is deliberate, not a contradiction:
+> different scope, different contract. `reviewer-tests` judges one generated test file that has already passed a
+> real run, so there is existing evidence to fall back on. `pr-reviewer` judges a whole diff nothing else has
+> looked at, so there is none. Even there, only the _verdict_ blocks — the review failing to run at all still
+> exits 0, for exactly the reason stated above.
 
 > [!NOTE]
 > Two source files were renamed, not duplicated, during this standardization: `src/jira-triage/gemini-verdict.ts`
@@ -583,10 +603,71 @@ ai-agents/
 > model pair instead of hardcoded to `AI_MODEL`/`AI_MODEL_FALLBACK`, so `reviewer-tests` can run on a different
 > tier than generation). `jira-triage` itself is unchanged — same behavior, updated import path.
 
-A fifth file, `ai-agents/personas/reporter.md`, documents the rendering contract both `failure-analysis` and
+One file, `ai-agents/personas/reporter.md`, documents the rendering contract both `failure-analysis` and
 `test-evolution` already follow (results table shape, "every claim cites its observability source") — it's read
 by a human maintaining either module, not loaded by any script at runtime; there's no separate `reporter` code
 path to wire in, since both callers already produce markdown in this shape.
+
+## 11. PR Review Gate
+
+An AI review of **every pull request's full diff** before it merges to `master` — the only check in
+this repo that reads a change as a whole rather than running it.
+
+**Trigger:** the `pr-review` job in `.github/workflows/regression.yml`, on every `pull_request`
+event against `master`.
+
+**Steps:**
+
+1. `gh pr diff <number>` fetches the PR's complete diff (truncated at `PR_REVIEW_MAX_DIFF_BYTES`,
+   default 200KB — the truncation is stated in the prompt, so the persona never reports "scope looks
+   fine" on hunks it was not shown).
+2. The diff, PR title and description go to the model under `ai-agents/personas/pr-reviewer.md`,
+   which checks six things: correctness, scope creep, hardcoded secrets/config, reinvented
+   abstractions, the goal-evolution agent/oracle split, and CI/merge-gate safety — i.e. this repo's
+   own "Critical rules" from `CLAUDE.md`, plus plain correctness.
+3. The verdict is printed, written to the job summary, and posted as a PR comment.
+4. Exit code: **non-zero only on a `major` finding.**
+
+**Output:** a `VERDICT: YES|NO` line plus one `[ok|minor|major]` bullet per check — the same
+grammar `reviewer-tests` emits, parsed by one shared module (`src/ai-agents/review-verdict.ts`)
+rather than two copies of the same regex.
+
+```
+Overall: ❌ NO — needs a look before merging
+
+- ✅ Correctness: logic matches the stated purpose
+- ⚠️ Scope: bumps an unrelated dependency
+- ❌ Secrets/config: API key written into src/api/clients/booking.client.ts:14
+```
+
+### Why it does not fail on its own errors
+
+A missing `AI_API_KEY`, an exhausted Gemini quota, or a reply the grammar cannot parse all exit **0**
+with a loud `review unavailable` line and PR comment. Those are facts about the infrastructure, not
+about the PR — and a blocking check that goes red for reasons its author cannot act on is a check
+people learn to ignore (the same reasoning that keeps `--max-warnings` off the lint gate). Only a
+finding blocks. "Nobody reviewed this" is still never silent: it says so in the PR.
+
+### What it actually gates today
+
+| Path to `master`                            | Gated?                                                                                                                    |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `agent-fixer/cache/*` autonomous auto-merge | **Yes, hard.** `agent-fixer-verify-and-merge` has `needs: [test, pr-review]` — a `major` finding stops the merge outright |
+| A human clicking Merge                      | **Advisory only** until branch protection is enabled                                                                      |
+
+The autonomous path is the one that matters most and the one that is genuinely blocked: it merges
+to `master` with no human at any point, and branch protection cannot help there (the job's own
+`gh pr merge` _is_ the merge). For a human-clicked merge this is currently a red X they can choose
+to override — making it a hard block requires ticking `pr-review` as a **required status check** in
+GitHub's branch-protection settings for `master`, which is a repo setting and cannot be committed
+from inside the repo.
+
+> [!NOTE]
+> This is a different contract from `reviewer-tests` (§10), which is deliberately advisory. That one
+> reviews a single generated test file that already passed a real run, inside `test-evolution`; a
+> flaky review call there must not discard verified-passing work. This one reviews a whole diff
+> nothing else has judged, and is the gate — but only its _verdict_ blocks, never its own failure to
+> run.
 
 ## Not yet built
 
@@ -610,8 +691,9 @@ path to wire in, since both callers already produce markdown in this shape.
   check #3 (assertion honesty) exists to catch, so a human has to be the one who merges it.
 - **CI enforcement for the page-knowledge convention** — no lint/CI check that the doc was updated alongside test
   code; it's a discipline convention, not an enforced one.
-- **Page-knowledge coverage** — five pages are documented (Text Box, Check Box, Buttons, Book Store Register, Web
-  Tables); the rest of the DemoQA pages haven't been explored yet.
+- **Page-knowledge coverage** — seven pages are documented (Text Box, Check Box, Buttons, Book Store Register, Book
+  Store List, Book Store Login, Web Tables); the rest of the DemoQA pages haven't been explored yet. Trust
+  `ls docs/page-knowledge/` over this line — a page gets documented more often than this count gets updated.
 
 ## Reports
 
