@@ -20,6 +20,11 @@ export default defineConfig({
     ['html', { open: 'never' }],
     ['allure-playwright', { resultsDir: 'allure-results' }],
     ['./src/observability/reporter.ts'],
+    // blob is what the CI sharding example (regression.yml's test-shard job) merges across
+    // shards — CI-only so a local run doesn't grow a blob-report/ directory. test:affected's
+    // fixed argv can't add CLI reporters (see that job's comment), so this has to live in config
+    // to fire on both the PR (affected) and push (full/--shard) paths alike.
+    ...(process.env.CI ? [['blob'] as const] : []),
   ],
   use: {
     trace: 'retain-on-failure',

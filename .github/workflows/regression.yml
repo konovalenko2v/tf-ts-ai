@@ -18,8 +18,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test:
+  # Sharding example (shard count = 1 for now — a real split just raises `shard-count` below).
+  # This job runs the suite in N parallel slices; `test` (further down) is the aggregate that
+  # merges their reports and is what branch protection actually requires — see that job's own
+  # comment for why the names are split this way.
+  test-shard:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # To actually split the suite across N jobs, raise BOTH lists together, e.g. for 4 shards:
+      # shard: [1, 2, 3, 4], shard-count: [4]. This is a cartesian product (matrix), not a paired
+      # zip — editing only `shard` runs the full suite N times over instead of splitting it.
+      matrix:
+        shard: [1]
+        shard-count: [1]
     steps:
       # fetch-depth: 0 — test:affected diffs the PR branch against origin/<base>, which needs
       # the base branch's history present locally; the default shallow (depth-1) checkout only
@@ -40,7 +52,9 @@ jobs:
       # tsx (every npm script here) strips types without checking them, and Playwright's own runner
       # does the same — so nothing else in this pipeline would catch a type error before it reached
       # master. Runs before the browser install (which takes ~1 min) so a type error fails fast.
+      # Only on shard 1: a repo-wide check, not something sharding the tests should multiply.
       - name: Type check
+        if: matrix.shard == 1
         run: npm run typecheck
 
       # eslint.config.mjs treats the pre-existing `response.json()` -> any warnings as warnings, so
@@ -48,9 +62,11 @@ jobs:
       # is deliberately not set to 0 while that backlog stands, otherwise the gate would be red on
       # arrival and get ignored.
       - name: Lint
+        if: matrix.shard == 1
         run: npm run lint
 
       - name: Format check
+        if: matrix.shard == 1
         run: npm run format:check
 
       - name: Install Playwright browsers
@@ -60,12 +76,21 @@ jobs:
       # cheaper feedback on a branch that hasn't merged yet. push/workflow_dispatch against master
       # always run the full suite: a false negative on master itself is the one outcome this
       # optimization must never risk.
+      #
+      # Sharding (--shard) only applies on the push/master branch below. test:affected
+      # (src/test-selection/) is a tsx wrapper that calls Playwright with its own fixed argv — it
+      # does not forward extra CLI flags — so at shard-count > 1 a PR would still run its whole
+      # affected list on every shard. Left as a known gap rather than silently running the full
+      # suite on PRs, which would reverse the affected-only optimization this comment used to
+      # describe alone. The blob reporter needed to merge shards below comes from
+      # playwright.config.ts (CI-gated), not a CLI flag here, precisely because test:affected
+      # can't be handed one.
       - name: Run tests
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             npm run test:affected
           else
-            npm test
+            npm test -- --shard=${{ matrix.shard }}/${{ matrix.shard-count }}
           fi
         env:
           BOOKER_USERNAME: ${{ vars.BOOKER_USERNAME }}
@@ -78,10 +103,120 @@ jobs:
           AI_MODEL: 'gemini-3.6-flash'
           AI_MODEL_FALLBACK: 'gemini-3.5-flash'
 
+      - name: Failure analysis
+        if: always()
+        run: npm run failure-analysis
+
+      # Per-shard blob report and raw allure-results, merged in the `test` summary job below.
+      # Suffixed with the shard number since upload-artifact rejects a second upload under the
+      # same name — invisible at shard-count 1, but required the moment it's raised past 1.
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: blob-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload allure results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: allure-results-${{ matrix.shard }}
+          path: allure-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Read by the fixer job below — kept separate from the Pages artifact since it's
+      # machine-readable input for agent-fixer, not part of the human-facing report.
+      - name: Upload observability data
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: observability-${{ matrix.shard }}
+          path: .observability/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload healwright cache
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: self-heal-cache-${{ matrix.shard }}
+          path: .self-heal/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # The aggregate over test-shard's matrix — named `test` (not `test-summary`) on purpose: this is
+  # the name branch protection's required status check and every downstream `needs: test` below
+  # (deploy, jira-triage, agent-fixer, agent-fixer-rollback, agent-fixer-verify-and-merge) already
+  # point at. Sharding the run must not mean renaming the check GitHub and this file both depend
+  # on — that would require a repo branch-protection settings change (and the same required-check
+  # deadlock worked through earlier for pr-review) just to add a sharding example.
+  test:
+    if: always()
+    needs: test-shard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # continue-on-error: a shard that never uploaded (crashed before that step, or a PR run
+      # with no shards at all) leaves zero matches for this pattern — the "Gate on shard results"
+      # step at the end is what actually fails this job, not an empty download here.
+      - name: Download blob reports
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: blob-report-*
+          path: all-blob-reports
+          merge-multiple: true
+
+      # continue-on-error: a shard that crashed before writing any blob file (e.g. browser install
+      # failed) legitimately leaves all-blob-reports/ empty — merge-reports on an empty directory
+      # must not take down the report-publishing steps below; "Gate on shard results" at the end
+      # is what actually fails this job on a red shard, not this step.
+      - name: Merge blob reports into HTML report
+        if: hashFiles('all-blob-reports/**') != ''
+        continue-on-error: true
+        run: npx playwright merge-reports --reporter=html ./all-blob-reports
+
+      # Surfaces the merge-reports output itself, since that's the artifact this sharding example
+      # was asked to demonstrate — separate from the Allure report below, which is what Pages
+      # actually serves.
+      - name: Upload merged Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Download allure results
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: allure-results-*
+          path: allure-results
+          merge-multiple: true
+
       # Informational only, not a merge gate — c8/V8 coverage over the unit project only (the
       # only project with in-repo src/ code to instrument; api/graphql/ui exercise external
-      # services, not this codebase). Runs regardless of the earlier test outcome so a PR still
-      # gets a coverage number even when an unrelated api/ui test in the same run is red.
+      # services, not this codebase). Runs regardless of shard outcome so a PR still gets a
+      # coverage number even when an unrelated api/ui test on some shard is red.
       - name: Coverage report (unit)
         if: always()
         # pipefail: without it the step's exit code comes from `tee`, which always succeeds — a
@@ -98,10 +233,6 @@ jobs:
             tail -n 20 coverage-output.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Failure analysis
-        if: always()
-        run: npm run failure-analysis
 
       - name: Generate Allure Report
         if: always()
@@ -129,27 +260,14 @@ jobs:
         with:
           path: 'allure-report'
 
-      # Read by the fixer job below — kept separate from the Pages artifact above since it's
-      # machine-readable input for agent-fixer, not part of the human-facing report.
-      - name: Upload observability data
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: observability
-          path: .observability/
-          include-hidden-files: true
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Upload healwright cache
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: self-heal-cache
-          path: .self-heal/
-          include-hidden-files: true
-          retention-days: 7
-          if-no-files-found: ignore
+      # The real gate: without this, a red shard would still leave the required `test` check
+      # green (this job's own steps above all succeed regardless of shard outcome — merging and
+      # reporting on a failed run is exactly when a human needs to see the report). Placed after
+      # publishing so the report still comes out on a red run, same always()-then-gate pattern the
+      # single-job version used with its own `if: always()` steps.
+      - name: Gate on shard results
+        if: needs.test-shard.result != 'success'
+        run: exit 1
 
   # PR-only skip, not a failure: the github-pages environment's branch protection rejects any
   # deploy attempt from a PR merge ref (refs/pull/N/merge) — only push/workflow_dispatch against
@@ -253,8 +371,9 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: observability
+          pattern: observability-*
           path: .observability/
+          merge-multiple: true
 
       - name: Run Jira triage
         run: npm run jira-triage
@@ -314,15 +433,17 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: observability
+          pattern: observability-*
           path: .observability/
+          merge-multiple: true
 
       - name: Download healwright cache
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: self-heal-cache
+          pattern: self-heal-cache-*
           path: .self-heal/
+          merge-multiple: true
 
       - name: Run agent-fixer
         run: npm run agent-fixer
@@ -442,13 +563,18 @@ jobs:
     # commit metadata is concerned, not by the GIT_AUTHOR_NAME env set on the branch's own commits.
     # The reliable signal is the squash commit message, which defaults to the PR title — and
     # run.ts's `gh pr create --title` always starts that title with 'agent-fixer:'.
+    #
+    # Gated on test-shard's own result, not just test's: the `test` summary job's gate step
+    # (`exit 1` on any non-success shard) binarizes a CANCELLED or SKIPPED shard run into
+    # `test.result == 'failure'` too, same as a genuine red suite. Reverting a real commit on a
+    # cancelled run would be wrong, so this checks test-shard directly for an actual failure.
     if: |
       always() &&
-      needs.test.result == 'failure' &&
+      needs.test-shard.result == 'failure' &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/master' &&
       startsWith(github.event.head_commit.message, 'agent-fixer:')
-    needs: test
+    needs: [test, test-shard]
     runs-on: ubuntu-latest
     permissions:
       contents: write
