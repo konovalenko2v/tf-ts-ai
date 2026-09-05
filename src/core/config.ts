@@ -34,6 +34,7 @@ export const config = {
   buttonsHost: `${uiBaseHost}/buttons`,
   webTablesHost: `${uiBaseHost}/webtables`,
   bookStoreListHost: `${uiBaseHost}/books`,
+  linksHost: `${uiBaseHost}/links`,
 };
 
 export function requireEnv(name: string): string {
