@@ -33,6 +33,7 @@ export const config = {
   checkBoxHost: `${uiBaseHost}/checkbox`,
   buttonsHost: `${uiBaseHost}/buttons`,
   webTablesHost: `${uiBaseHost}/webtables`,
+  bookStoreListHost: `${uiBaseHost}/books`,
 };
 
 export function requireEnv(name: string): string {
@@ -49,4 +50,12 @@ export function getValidUserName(): string {
 
 export function getValidUserPassword(): string {
   return requireEnv('USER_PASSWORD');
+}
+
+export function getBookStoreUserName(): string {
+  return requireEnv('BOOK_STORE_USERNAME');
+}
+
+export function getBookStorePassword(): string {
+  return requireEnv('BOOK_STORE_PASSWORD');
 }

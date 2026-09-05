@@ -4,6 +4,7 @@ import { StepEvent, TestSummaryEvent } from '../observability/types';
 import { latestRunFile, readEvents } from '../observability/run-file';
 import { groupFailures, summarizeRecoveries, FailureCategory } from './classify';
 import { readHealEvents } from './heal-events';
+import { dispatchRetry, RetryVerdict } from './retry-dispatch';
 
 const HEAL_EVENTS_FILE = '.self-heal/heal_events.jsonl';
 const ALLURE_RESULTS_DIR = 'allure-results';
@@ -31,10 +32,45 @@ const RETRY_VERDICTS: Record<FailureCategory, string> = {
   other: 'No established policy yet — falls back to the project default retry count.',
 };
 
+// The rule-based table above is keyed on FailureCategory and covers every category except `other`,
+// where it admits it has no policy. That gap is the only place an AI call earns its cost here: a
+// failure the deterministic classifier couldn't name. Asking the model about a `config` failure
+// would be paying for an answer the table already states with certainty.
+//
+// Advisory only, and deliberately so — the verdict is printed next to the rule-based one, never
+// substituted for it, and nothing downstream branches on it. Playwright fixes `retries` per project
+// before the run starts, so no retry decision here can change what actually ran; presenting an AI
+// number as if it controlled retries would be a lie about the mechanism.
+async function adviseUncategorized(
+  groups: ReturnType<typeof groupFailures>,
+  tests: TestSummaryEvent[],
+): Promise<Map<string, RetryVerdict>> {
+  const advice = new Map<string, RetryVerdict>();
+  const uncategorized = groups.filter((g) => g.category === 'other');
+  if (uncategorized.length === 0) return advice;
+
+  for (const group of uncategorized) {
+    // One call per distinct cause, not per failing test: every test in a group shares a signature,
+    // so N calls would buy N copies of one answer.
+    const firstAttempt = tests.find((t) => group.testTitlePaths.includes(t.testTitlePath) && t.retry === 0 && t.error);
+    if (!firstAttempt) continue;
+
+    try {
+      advice.set(group.signature, await dispatchRetry(firstAttempt));
+    } catch (err) {
+      // A failed advisory call must not sink the report the deterministic half already produced.
+      process.stderr.write(`[failure-analysis] retry-dispatcher unavailable for "${group.signature}": ${(err as Error).message}\n`);
+    }
+  }
+
+  return advice;
+}
+
 function renderReport(
   runFile: string,
   groups: ReturnType<typeof groupFailures>,
   recoveries: ReturnType<typeof summarizeRecoveries>,
+  retryAdvice: Map<string, RetryVerdict>,
 ): string {
   const lines: string[] = [];
   lines.push(`# Failure analysis — ${path.basename(runFile)}`, '');
@@ -49,6 +85,14 @@ function renderReport(
       lines.push(`## ${CATEGORY_LABELS[g.category]} — ${g.count} test(s)${flakyNote}`, '');
       lines.push(`Signature: \`${g.signature}\``, '');
       lines.push(`Retry verdict: ${RETRY_VERDICTS[g.category]}`, '');
+      const advice = retryAdvice.get(g.signature);
+      if (advice) {
+        lines.push(
+          `AI retry-dispatcher (advisory, does not control retries): ${advice.category}, ` +
+            `shouldRetry=${advice.shouldRetry}, budget ${advice.retryBudget} — ${advice.explanation}`,
+          '',
+        );
+      }
       lines.push('Affected tests:');
       for (const p of g.testTitlePaths) lines.push(`- ${p.trim()}`);
       lines.push('', '<details><summary>Sample error message</summary>', '', '```', g.sampleMessage, '```', '</details>', '');
@@ -95,7 +139,7 @@ function writeAllureEnvironment(recoveries: ReturnType<typeof summarizeRecoverie
   fs.writeFileSync(path.join(ALLURE_RESULTS_DIR, 'environment.properties'), lines.join('\n') + '\n');
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const runFile = process.argv[2] ?? latestRunFile();
   if (!runFile) {
     process.stderr.write('[failure-analysis] no observability run file found — nothing to analyze\n');
@@ -109,7 +153,8 @@ function main(): void {
   const healEvents = readHealEvents(HEAL_EVENTS_FILE);
   const groups = groupFailures(tests);
   const recoveries = summarizeRecoveries(steps, healEvents);
-  const report = renderReport(runFile, groups, recoveries);
+  const retryAdvice = await adviseUncategorized(groups, tests);
+  const report = renderReport(runFile, groups, recoveries, retryAdvice);
   writeAllureEnvironment(recoveries);
 
   const outPath = path.join(path.dirname(runFile), `failure-analysis-${path.basename(runFile, '.jsonl')}.md`);
@@ -125,5 +170,8 @@ function main(): void {
 }
 
 if (require.main === module) {
-  main();
+  main().catch((err: Error) => {
+    process.stderr.write(`[failure-analysis] ${err.message}\n`);
+    process.exitCode = 1;
+  });
 }

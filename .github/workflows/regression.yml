@@ -24,12 +24,12 @@ jobs:
       # fetch-depth: 0 — test:affected diffs the PR branch against origin/<base>, which needs
       # the base branch's history present locally; the default shallow (depth-1) checkout only
       # has this branch's own commits.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: '.nvmrc'
           cache: npm
@@ -70,6 +70,8 @@ jobs:
         env:
           BOOKER_USERNAME: ${{ vars.BOOKER_USERNAME }}
           USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
+          BOOK_STORE_USERNAME: ${{ secrets.BOOK_STORE_USERNAME }}
+          BOOK_STORE_PASSWORD: ${{ secrets.BOOK_STORE_PASSWORD }}
           SELF_HEAL: '1'
           AI_PROVIDER: 'google'
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
@@ -117,13 +119,13 @@ jobs:
 
       - name: Setup Pages
         if: always()
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
         with:
           enablement: true
 
       - name: Upload Pages artifact
         if: always()
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: 'allure-report'
 
@@ -131,7 +133,7 @@ jobs:
       # machine-readable input for agent-fixer, not part of the human-facing report.
       - name: Upload observability data
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: observability
           path: .observability/
@@ -141,7 +143,7 @@ jobs:
 
       - name: Upload healwright cache
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: self-heal-cache
           path: .self-heal/
@@ -164,7 +166,58 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
+
+  # AI review of the PR's full diff against this repo's stated rules (src/ai-agents/pr-reviewer.ts,
+  # ai-agents/personas/pr-reviewer.md) — the merge gate for every PR, whoever opened it.
+  #
+  # Deliberately NOT `needs: test`. The reviewer reads `gh pr diff`, not a test artifact, so gating
+  # it on the test job would only make the review skip (or wait) exactly when tests are red — which
+  # is when a second opinion is most useful, not least. It also gets the signal to the author sooner.
+  #
+  # Exits nonzero ONLY on a `major` finding. A missing AI_API_KEY, an exhausted Gemini quota, or
+  # output the persona's grammar can't parse all exit 0 with a loud "review unavailable" comment —
+  # those are facts about the infrastructure, not about the PR, and a check that goes red for
+  # reasons the author cannot act on is a check people learn to ignore. See pr-reviewer.ts's header
+  # for the full exit-code contract.
+  #
+  # NOTE: making this a *required* check (so GitHub itself refuses the merge button) is a branch-
+  # protection setting in the repo's GitHub settings — it cannot be turned on from a file in the
+  # repo. Until a human enables it for `master`, this job blocks the autonomous agent-fixer path
+  # below (via `needs`) but only advises a human clicking merge.
+  pr-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Top-level `permissions:` grants contents: read only — the verdict comment needs this.
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Review PR diff
+        run: npm run pr-review -- "${{ github.event.pull_request.number }}"
+        env:
+          # The default GITHUB_TOKEN is enough for `gh pr diff` / `gh pr comment` — no PAT needed,
+          # unlike agent-fixer, which pushes branches and merges.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          # Set explicitly rather than inherited: AI_MODEL/AI_MODEL_FALLBACK are healwright's own
+          # runtime healing allowance, and a review call quietly competing with self-healing for the
+          # same quota is how one feature starts breaking the other. Same pattern as jira-triage.
+          AI_MODEL: 'gemini-3.6-flash'
+          AI_MODEL_FALLBACK: 'gemini-3.5-flash'
 
   # Collects Jira context for every assertion-category failure and asks for a bug-vs-feature-change
   # verdict, per src/jira-triage/. PR-only: the branch-name-to-Jira-key parse
@@ -181,10 +234,10 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: '.nvmrc'
           cache: npm
@@ -198,7 +251,7 @@ jobs:
       # "nothing to triage" when latestRunFile() finds no run file.
       - name: Download observability data
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: observability
           path: .observability/
@@ -237,12 +290,12 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           token: ${{ secrets.FIXER_PAT }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: '.nvmrc'
           cache: npm
@@ -259,14 +312,14 @@ jobs:
       # step failing must not fail the job ahead of that clean no-op path.
       - name: Download observability data
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: observability
           path: .observability/
 
       - name: Download healwright cache
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: self-heal-cache
           path: .self-heal/
@@ -300,23 +353,32 @@ jobs:
     # Unlike the `test` job's own always()-based continue-on-error reasoning (an unrelated api
     # flake shouldn't block a human-facing report), this gate guards an UNREVIEWED merge to
     # master — it must only proceed when the PR's own CI actually passed.
+    #
+    # pr-review is in `needs` because this is the ONE path in the repo that merges to master with
+    # no human at any point — so it is exactly the path an AI review gate exists to cover. Branch
+    # protection cannot help here: `gh pr merge` run by this job is the merge, and a required check
+    # would be satisfied by this same workflow anyway. Requiring `success` (not just `!= 'skipped'`)
+    # means a `major` finding stops the auto-merge outright. pr-reviewer exits 0 when the review
+    # could not RUN (no key, quota exhausted, unparseable reply — see its header), so a quota blip
+    # does not deadlock autonomy; only an actual blocking finding does.
     if: |
       needs.test.result == 'success' &&
+      needs['pr-review'].result == 'success' &&
       github.event_name == 'pull_request' &&
       startsWith(github.head_ref, 'agent-fixer/cache/')
-    needs: test
+    needs: [test, pr-review]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           token: ${{ secrets.FIXER_PAT }}
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: '.nvmrc'
           cache: npm
@@ -392,7 +454,7 @@ jobs:
       contents: write
       issues: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           token: ${{ secrets.FIXER_PAT }}
           fetch-depth: 0
