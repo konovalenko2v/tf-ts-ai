@@ -655,6 +655,18 @@ finding blocks. "Nobody reviewed this" is still never silent: it says so in the 
 | `agent-fixer/cache/*` autonomous auto-merge | **Yes, hard.** `agent-fixer-verify-and-merge` has `needs: [test, pr-review]` — a `major` finding stops the merge outright |
 | A human clicking Merge                      | **Advisory only** until branch protection is enabled                                                                      |
 
+Two known limits, both observed rather than theorised:
+
+- **The PR description shares a prompt with the persona.** On this feature's own first live run, the
+  verdict's Scope bullet described "UI test consolidation and page-knowledge doc updates" — wording
+  taken from that PR's description, for changes the diff did not contain. The body is now fenced and
+  labelled untrusted, and the persona treats a described-but-absent change as a `major` Scope
+  finding. That inverts the failure mode, but it has been exercised on one adversarial-ish case, not
+  many — treat the gate as a good reviewer, not a hostile one.
+- **A PR that edits `pr-reviewer.md` is reviewed by its own edited version**, since the persona is
+  read from the PR checkout. Only reachable on human PRs: agent-fixer's `ALLOWED_TARGET_FILES`
+  scope-check cannot touch that file, so the autonomous path is unaffected.
+
 The autonomous path is the one that matters most and the one that is genuinely blocked: it merges
 to `master` with no human at any point, and branch protection cannot help there (the job's own
 `gh pr merge` _is_ the merge). For a human-clicked merge this is currently a red X they can choose

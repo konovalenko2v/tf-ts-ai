@@ -33,7 +33,7 @@ export interface ReviewVerdict {
 export function renderVerdict(v: ReviewVerdict): string {
   const icon: Record<Severity, string> = { ok: '✅', minor: '⚠️', major: '❌' };
   const lines = v.findings.map((f) => `- ${icon[f.severity]} **${f.check}**: ${f.note}`);
-  return [`**Overall: ${v.verdict ? '✅ YES — safe to propose as-is' : '❌ NO — needs a look before merging'}**`, '', ...lines].join('\n');
+  return [`**Overall: ${v.verdict ? '✅ YES — no blocking findings' : '❌ NO — needs a look before merging'}**`, '', ...lines].join('\n');
 }
 
 // Parses a persona's raw reply into the structured verdict.
