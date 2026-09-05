@@ -10,20 +10,21 @@ self-repair, test selection, and triage.
 
 ## Status at a glance
 
-| #   | Feature                                                       | Status  | What it does                                                                                                                                                                                                           | Why it matters                                                                                                                                                                                                                                                                      |
-| --- | ------------------------------------------------------------- | :-----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | [Self-Healing UI Locators](#1-self-healing-ui-locators)       | 🟢 100% | AI re-finds a broken locator at runtime, caches the fix                                                                                                                                                                | A cosmetic markup change (an id/class rename) doesn't turn the test red — the AI patches around it live instead of a human fixing the locator by hand                                                                                                                               |
-| 2   | [AI Observability Layer](#2-ai-observability-layer)           | 🟢 100% | Structured JSONL log of every test step, including silent recoveries                                                                                                                                                   | Gives every other AI feature below the structured data it needs to work from — without this, nothing downstream (fixer, triage, analysis) has anything to read                                                                                                                      |
-| 3   | [Agent-Fixer](#3-agent-fixer)                                 | 🟡 ~90% | Opens a PR that patches source code for a locator healing already fixed at runtime                                                                                                                                     | Turns a _live_ fix (self-healing, gone if the cache is cleared) into a _permanent_ one committed to source, so the same locator doesn't need re-healing every run                                                                                                                   |
-| 4   | [Failure Analysis](#4-failure-analysis)                       | 🟢 100% | Groups failures by real cause, states a retry verdict per cause                                                                                                                                                        | Saves a human from reading 20 red tests one by one — collapses them into "these are the same root cause" and says whether retrying is even worth it                                                                                                                                 |
-| 5   | [Affected-Test Selection](#5-affected-test-selection)         | 🟢 100% | Runs only the specs a change can actually affect, via a real TS import graph                                                                                                                                           | Faster PR feedback — a one-file change doesn't have to wait for the entire suite to run before you know if it broke something                                                                                                                                                       |
-| 6   | [Jira-Driven Red-Test Triage](#6-jira-driven-red-test-triage) | 🟡 ~60% | Reads Jira context for a failing assertion, verdicts bug vs. intentional change                                                                                                                                        | **Triage** = sorting failures by what actually needs attention. A red test isn't automatically a bug — it might just be asserting old, now-intentionally-changed behavior. This tells you which, using the ticket that likely caused it, instead of a human having to go look it up |
-| 7   | [Self-Evolving Test Suite](#7-self-evolving-test-suite)       | 🟡 ~70% | AI proposes a new edge-case test, only opens a PR if it demonstrably passes                                                                                                                                            | Grows coverage without waiting for a human to think up every edge case — but only ever proposes a test it already proved passes, never an unverified guess                                                                                                                          |
-| 8   | [Goal-Based Tests](#8-goal-based-tests)                       | 🟡 demo | Agent resolves a plain-English goal into a driver, from page-knowledge alone, judged by a fixed human-written oracle it never sees                                                                                     | Proves the framework's pieces (page-knowledge, personas, CLI fallback) compose into "describe intent, not steps" — deliberately one demo goal, not a general capability yet                                                                                                         |
-| 9   | [Page Knowledge Cache](#9-page-knowledge-cache)               | 🟢 100% | Committed per-page DOM/behavior notes — skip re-exploring a page already documented                                                                                                                                    | Saves real time/tokens — writing a test for a page already explored once doesn't require opening a browser and re-discovering its structure from scratch                                                                                                                            |
-| 10  | [AI Agent Personas](#10-ai-agent-personas)                    | 🟡 ~80% | Standardized personas (test-developer, locator-medic, reviewer-tests, qa-analyst, goal-solver) with a 4-tier CLI fallback (Claude + 3 Gemini models, optionally on separate API keys) and a separate review-tier model | One place to read/edit what each AI role is instructed to do, instead of an inline prompt string buried in each module — and a second, differently-modeled review gate before a generated test ships                                                                                |
-| 11  | [Retry Verdicts](#4-failure-analysis)                         | 🟡 ~50% | Names why each failure cause is or isn't worth retrying; the AI dispatcher adds a categorised advisory verdict for causes the rule-based table can't name                                                              | Makes retry cost visible instead of implicit in a retry count. The half that stays unbuilt is _acting_ on it — Playwright fixes `retries` per project before the run starts, so per-failure budgets need a runner-level change, not a caller (see below)                            |
-| 12  | Intent-Based Testing + **draft** PR on a jira-triage verdict  |  ⚪ 0%  | Not built — jira-triage stops at the verdict, no fix generation. If built: draft PR only, never auto-merge                                                                                                             | Would close the loop #6 opens: once triage confirms "this test is just outdated," propose the updated test instead of leaving a human to rewrite it — but an AI that edits a failing test until it passes is a machine for producing green meaningless tests, so a human must merge |
+| #   | Feature                                                       | Status  | What it does                                                                                                                                                                                                                                                                        | Why it matters                                                                                                                                                                                                                                                                      |
+| --- | ------------------------------------------------------------- | :-----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | [Self-Healing UI Locators](#1-self-healing-ui-locators)       | 🟢 100% | AI re-finds a broken locator at runtime, caches the fix                                                                                                                                                                                                                             | A cosmetic markup change (an id/class rename) doesn't turn the test red — the AI patches around it live instead of a human fixing the locator by hand                                                                                                                               |
+| 2   | [AI Observability Layer](#2-ai-observability-layer)           | 🟢 100% | Structured JSONL log of every test step, including silent recoveries                                                                                                                                                                                                                | Gives every other AI feature below the structured data it needs to work from — without this, nothing downstream (fixer, triage, analysis) has anything to read                                                                                                                      |
+| 3   | [Agent-Fixer](#3-agent-fixer)                                 | 🟡 ~90% | Opens a PR that patches source code for a locator healing already fixed at runtime                                                                                                                                                                                                  | Turns a _live_ fix (self-healing, gone if the cache is cleared) into a _permanent_ one committed to source, so the same locator doesn't need re-healing every run                                                                                                                   |
+| 4   | [Failure Analysis](#4-failure-analysis)                       | 🟢 100% | Groups failures by real cause, states a retry verdict per cause                                                                                                                                                                                                                     | Saves a human from reading 20 red tests one by one — collapses them into "these are the same root cause" and says whether retrying is even worth it                                                                                                                                 |
+| 5   | [Affected-Test Selection](#5-affected-test-selection)         | 🟢 100% | Runs only the specs a change can actually affect, via a real TS import graph                                                                                                                                                                                                        | Faster PR feedback — a one-file change doesn't have to wait for the entire suite to run before you know if it broke something                                                                                                                                                       |
+| 6   | [Jira-Driven Red-Test Triage](#6-jira-driven-red-test-triage) | 🟡 ~60% | Reads Jira context for a failing assertion, verdicts bug vs. intentional change                                                                                                                                                                                                     | **Triage** = sorting failures by what actually needs attention. A red test isn't automatically a bug — it might just be asserting old, now-intentionally-changed behavior. This tells you which, using the ticket that likely caused it, instead of a human having to go look it up |
+| 7   | [Self-Evolving Test Suite](#7-self-evolving-test-suite)       | 🟡 ~70% | AI proposes a new edge-case test, only opens a PR if it demonstrably passes                                                                                                                                                                                                         | Grows coverage without waiting for a human to think up every edge case — but only ever proposes a test it already proved passes, never an unverified guess                                                                                                                          |
+| 8   | [Goal-Based Tests](#8-goal-based-tests)                       | 🟡 demo | Agent resolves a plain-English goal into a driver, from page-knowledge alone, judged by a fixed human-written oracle it never sees                                                                                                                                                  | Proves the framework's pieces (page-knowledge, personas, CLI fallback) compose into "describe intent, not steps" — deliberately one demo goal, not a general capability yet                                                                                                         |
+| 9   | [Page Knowledge Cache](#9-page-knowledge-cache)               | 🟢 100% | Committed per-page DOM/behavior notes — skip re-exploring a page already documented                                                                                                                                                                                                 | Saves real time/tokens — writing a test for a page already explored once doesn't require opening a browser and re-discovering its structure from scratch                                                                                                                            |
+| 10  | [AI Agent Personas](#10-ai-agent-personas)                    | 🟡 ~80% | Standardized personas (test-developer, locator-medic, reviewer-tests, qa-analyst, goal-solver) with a 4-tier CLI fallback (Claude + 3 Gemini models, optionally on separate API keys) and a separate review-tier model                                                              | One place to read/edit what each AI role is instructed to do, instead of an inline prompt string buried in each module — and a second, differently-modeled review gate before a generated test ships                                                                                |
+| 11  | [Retry Verdicts](#4-failure-analysis)                         | 🟢 100% | Names why each failure cause is or isn't worth retrying; the AI dispatcher adds a categorised advisory verdict for causes the rule-based table can't name; a missing credential is caught before any retry is spent and `maxFailures` aborts the run on a genuinely unfixable cause | Makes retry cost visible and acts on the two cases that are actually reachable in Playwright — a true per-test dynamic budget isn't (see "Not yet built")                                                                                                                           |
+| 12  | [PR Review Gate](#11-pr-review-gate)                          | 🟡 ~80% | Reviews every PR's full diff against this repo's own hard rules, blocks the merge on a `major` finding                                                                                                                                                                              | The only check that reads a change as a _whole_ rather than running it — and the only thing standing between agent-fixer's autonomous auto-merge and `master`. Advisory for a human clicking merge until branch protection is enabled by hand (see §11)                             |
+| 13  | Intent-Based Testing + **draft** PR on a jira-triage verdict  |  ⚪ 0%  | Not built — jira-triage stops at the verdict, no fix generation. If built: draft PR only, never auto-merge                                                                                                                                                                          | Would close the loop #6 opens: once triage confirms "this test is just outdated," propose the updated test instead of leaving a human to rewrite it — but an AI that edits a failing test until it passes is a machine for producing green meaningless tests, so a human must merge |
 
 🟢 built and wired into CI · 🟡 built, partially wired or with a known gap · ⚪ not built yet
 
@@ -121,6 +122,16 @@ import graph on that API, so it needs a planned migration rather than an automat
 `.git-blame-ignore-revs` lists the bulk-reformat commit so `git blame` skips it — enable locally with
 `git config blame.ignoreRevsFile .git-blame-ignore-revs` (GitHub honours it automatically).
 
+Every `uses:` in `.github/workflows/regression.yml` is pinned to a commit SHA, not a version tag — a tag can be
+force-moved to point at different code without a version bump, a SHA cannot. The version is kept as a trailing
+comment (`@<sha> # v7`) so the workflow stays readable; Dependabot's `github-actions` group still opens the
+update PR when a new release lands, bumping both the SHA and the comment together.
+
+`.github/CODEOWNERS` and `.github/pull_request_template.md` exist even for a single-maintainer repo: a required
+reviewer on `.github/workflows/` and `src/agent-fixer/` (the code deciding what merges without a human) is a
+statement about that path's sensitivity, not a statement about team size, and the PR checklist is what a second
+maintainer would need without re-deriving it from this file.
+
 ## Project Structure
 
 ```
@@ -144,7 +155,8 @@ src/
 ├── jira-triage/            Jira context collection + bug/feature verdict (#6)
 ├── test-evolution/         AI-generated edge-case test, runs it, proposes a PR only if it passes (#7)
 ├── goal-evolution/         goal-in-plain-English → agent-written driver, judged by a fixed oracle (#8)
-└── ai-agents/              shared CLI fallback, Gemini text/verdict helper, reviewer-tests, qa-analyst (#10)
+└── ai-agents/              shared CLI fallback, Gemini text/verdict helper, shared review-verdict
+                            grammar, reviewer-tests, pr-reviewer (#11), qa-analyst (#10)
 tests/
 ├── api/                  auth.spec.ts, booking-crud.spec.ts, negative.spec.ts, book-store-goal.spec.ts (+ test-evolution output)
 ├── graphql/               positive.spec.ts, negative.spec.ts
@@ -152,13 +164,16 @@ tests/
 docs/
 └── page-knowledge/       one markdown file per DemoQA page under test (#9)
 ai-agents/
-├── personas/             system prompt per AI role — qa-analyst, test-developer, locator-medic, reviewer-tests, goal-solver (#10)
+├── personas/             system prompt per AI role — qa-analyst, test-developer, locator-medic,
+│                          reviewer-tests, goal-solver, healing-classifier, retry-dispatcher,
+│                          pr-reviewer (#11), reporter (docs-only convention) (#10)
 └── profiles/              cheap.env (Claude Sonnet 5 primary, Gemini reserve) / paranoid.env (review tier) (#10)
 resources/
 ├── GQL/                  test GraphQL queries (*.json)
 └── files/                 upload-test.txt for the UI test
 .github/workflows/
-└── regression.yml        test → failure-analysis → Allure/Pages deploy, + jira-triage (PR) and agent-fixer (master)
+└── regression.yml        test → failure-analysis → Allure/Pages deploy, + pr-review (PR, merge gate),
+                           jira-triage (PR) and agent-fixer (master)
 ```
 
 ## Endpoint Coverage (REST)
@@ -539,7 +554,13 @@ ai-agents/
 │   ├── test-developer.md  writes test code — hard rule: only existing Page Objects/clients/steps,
 │   │                      never a new abstraction (was test-evolution's inline prompt)
 │   ├── locator-medic.md   fixes one broken locator in source (was agent-fixer's inline prompt)
-│   └── reviewer-tests.md  read-only architecture/style review, VERDICT/REASON output
+│   ├── reviewer-tests.md  read-only architecture/style review of ONE generated test file
+│   ├── pr-reviewer.md     read-only review of a whole PR diff — the merge gate (#11)
+│   ├── goal-solver.md     plain-English goal → driver, never the oracle (#8)
+│   ├── healing-classifier.md  categorises why a locator needed healing (#4)
+│   ├── retry-dispatcher.md    advisory retry verdict for a failure cause (#4)
+│   └── reporter.md        rendering convention for failure-analysis/test-evolution markdown —
+│                          read by a human, not loaded by any script at runtime
 └── profiles/             env files controlling which model tier a role runs on
     ├── cheap.env           generation tier: Claude (Sonnet 5, --effort medium) writes first; three
     │                       Gemini models (AI_AGENTS_MODEL/_FALLBACK/_FALLBACK_2, separate from
@@ -553,19 +574,28 @@ ai-agents/
                              the same effort as generation defeats the point of a paranoid pass
 ```
 
-| Persona          | Lives in                               | Wired into                                                                                                                                              |
-| ---------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test-developer` | `src/test-evolution/propose-test.ts`   | `npm run test-evolution`                                                                                                                                |
-| `locator-medic`  | `src/agent-fixer/fix-proposer.ts`      | `npm run agent-fixer` (layer 2, cache-miss fallback)                                                                                                    |
-| `reviewer-tests` | `src/ai-agents/reviewer-tests.ts`      | `npm run test-evolution`, as a second gate after the generated test already passed a real run                                                           |
-| `goal-solver`    | `src/goal-evolution/propose-driver.ts` | `npm run goal-evolution` — extends `test-developer`, resolves a plain-English goal into a driver, never writes the oracle                               |
-| `qa-analyst`     | `src/ai-agents/qa-analyst.ts`          | `npm run qa-analyst -- <requirement-file>` — standalone, not wired into CI (a requirement has no fixed file location the way an observability run does) |
+| Persona              | Lives in                                   | Wired into                                                                                                                                              |
+| -------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test-developer`     | `src/test-evolution/propose-test.ts`       | `npm run test-evolution`                                                                                                                                |
+| `locator-medic`      | `src/agent-fixer/fix-proposer.ts`          | `npm run agent-fixer` (layer 2, cache-miss fallback)                                                                                                    |
+| `reviewer-tests`     | `src/ai-agents/reviewer-tests.ts`          | `npm run test-evolution`, as a second gate after the generated test already passed a real run                                                           |
+| `goal-solver`        | `src/goal-evolution/propose-driver.ts`     | `npm run goal-evolution` — extends `test-developer`, resolves a plain-English goal into a driver, never writes the oracle                               |
+| `qa-analyst`         | `src/ai-agents/qa-analyst.ts`              | `npm run qa-analyst -- <requirement-file>` — standalone, not wired into CI (a requirement has no fixed file location the way an observability run does) |
+| `pr-reviewer`        | `src/ai-agents/pr-reviewer.ts`             | `npm run pr-review -- <pr-number>`, and the `pr-review` CI job — reviews a whole PR diff, blocks the merge on a `major` finding (#11)                   |
+| `healing-classifier` | `src/failure-analysis/healing-classify.ts` | `npm run failure-analysis` — categorises why a locator needed healing (#4)                                                                              |
+| `retry-dispatcher`   | `src/failure-analysis/retry-dispatch.ts`   | `npm run failure-analysis` — advisory retry verdict for a cause the rule-based table can't name (#4)                                                    |
 
 > [!IMPORTANT]
 > `reviewer-tests` is **advisory, not a gate that blocks the PR** — a CLI/API failure here falls through to
 > "proceed without a review verdict" rather than discarding an already-verified-passing test. The point is a
 > second opinion from a different model tier surfaced in the PR body, not a second pass/fail hurdle a flaky review
 > call could block on.
+>
+> `pr-reviewer` (#11) is the one that **does** block, and the distinction is deliberate, not a contradiction:
+> different scope, different contract. `reviewer-tests` judges one generated test file that has already passed a
+> real run, so there is existing evidence to fall back on. `pr-reviewer` judges a whole diff nothing else has
+> looked at, so there is none. Even there, only the _verdict_ blocks — the review failing to run at all still
+> exits 0, for exactly the reason stated above.
 
 > [!NOTE]
 > Two source files were renamed, not duplicated, during this standardization: `src/jira-triage/gemini-verdict.ts`
@@ -573,21 +603,93 @@ ai-agents/
 > model pair instead of hardcoded to `AI_MODEL`/`AI_MODEL_FALLBACK`, so `reviewer-tests` can run on a different
 > tier than generation). `jira-triage` itself is unchanged — same behavior, updated import path.
 
-A fifth file, `ai-agents/personas/reporter.md`, documents the rendering contract both `failure-analysis` and
+One file, `ai-agents/personas/reporter.md`, documents the rendering contract both `failure-analysis` and
 `test-evolution` already follow (results table shape, "every claim cites its observability source") — it's read
 by a human maintaining either module, not loaded by any script at runtime; there's no separate `reporter` code
 path to wire in, since both callers already produce markdown in this shape.
 
+## 11. PR Review Gate
+
+An AI review of **every pull request's full diff** before it merges to `master` — the only check in
+this repo that reads a change as a whole rather than running it.
+
+**Trigger:** the `pr-review` job in `.github/workflows/regression.yml`, on every `pull_request`
+event against `master`.
+
+**Steps:**
+
+1. `gh pr diff <number>` fetches the PR's complete diff (truncated at `PR_REVIEW_MAX_DIFF_BYTES`,
+   default 200KB — the truncation is stated in the prompt, so the persona never reports "scope looks
+   fine" on hunks it was not shown).
+2. The diff, PR title and description go to the model under `ai-agents/personas/pr-reviewer.md`,
+   which checks six things: correctness, scope creep, hardcoded secrets/config, reinvented
+   abstractions, the goal-evolution agent/oracle split, and CI/merge-gate safety — i.e. this repo's
+   own "Critical rules" from `CLAUDE.md`, plus plain correctness.
+3. The verdict is printed, written to the job summary, and posted as a PR comment.
+4. Exit code: **non-zero only on a `major` finding.**
+
+**Output:** a `VERDICT: YES|NO` line plus one `[ok|minor|major]` bullet per check — the same
+grammar `reviewer-tests` emits, parsed by one shared module (`src/ai-agents/review-verdict.ts`)
+rather than two copies of the same regex.
+
+```
+Overall: ❌ NO — needs a look before merging
+
+- ✅ Correctness: logic matches the stated purpose
+- ⚠️ Scope: bumps an unrelated dependency
+- ❌ Secrets/config: API key written into src/api/clients/booking.client.ts:14
+```
+
+### Why it does not fail on its own errors
+
+A missing `AI_API_KEY`, an exhausted Gemini quota, or a reply the grammar cannot parse all exit **0**
+with a loud `review unavailable` line and PR comment. Those are facts about the infrastructure, not
+about the PR — and a blocking check that goes red for reasons its author cannot act on is a check
+people learn to ignore (the same reasoning that keeps `--max-warnings` off the lint gate). Only a
+finding blocks. "Nobody reviewed this" is still never silent: it says so in the PR.
+
+### What it actually gates today
+
+| Path to `master`                            | Gated?                                                                                                                    |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `agent-fixer/cache/*` autonomous auto-merge | **Yes, hard.** `agent-fixer-verify-and-merge` has `needs: [test, pr-review]` — a `major` finding stops the merge outright |
+| A human clicking Merge                      | **Advisory only** until branch protection is enabled                                                                      |
+
+Two known limits, both observed rather than theorised:
+
+- **The PR description shares a prompt with the persona.** On this feature's own first live run, the
+  verdict's Scope bullet described "UI test consolidation and page-knowledge doc updates" — wording
+  taken from that PR's description, for changes the diff did not contain. The body is now fenced and
+  labelled untrusted, and the persona treats a described-but-absent change as a `major` Scope
+  finding. That inverts the failure mode, but it has been exercised on one adversarial-ish case, not
+  many — treat the gate as a good reviewer, not a hostile one.
+- **A PR that edits `pr-reviewer.md` is reviewed by its own edited version**, since the persona is
+  read from the PR checkout. Only reachable on human PRs: agent-fixer's `ALLOWED_TARGET_FILES`
+  scope-check cannot touch that file, so the autonomous path is unaffected.
+
+The autonomous path is the one that matters most and the one that is genuinely blocked: it merges
+to `master` with no human at any point, and branch protection cannot help there (the job's own
+`gh pr merge` _is_ the merge). For a human-clicked merge this is currently a red X they can choose
+to override — making it a hard block requires ticking `pr-review` as a **required status check** in
+GitHub's branch-protection settings for `master`, which is a repo setting and cannot be committed
+from inside the repo.
+
+> [!NOTE]
+> This is a different contract from `reviewer-tests` (§10), which is deliberately advisory. That one
+> reviews a single generated test file that already passed a real run, inside `test-evolution`; a
+> flaky review call there must not discard verified-passing work. This one reviews a whole diff
+> nothing else has judged, and is the gate — but only its _verdict_ blocks, never its own failure to
+> run.
+
 ## Not yet built
 
-- **Retry verdicts as a real lever** — the verdicts are produced and reported (rule-based per category, plus an
-  AI advisory verdict for uncategorized causes), but nothing turns them into an actual retry decision, and this
-  is a Playwright constraint rather than missing work: `retries` is a static per-project number read before the
-  run starts, and there is no per-attempt hook to grant or deny a retry based on why the previous attempt failed.
-  The reachable version of this idea is not a per-test budget but a **fail-fast run abort** — on a `CONFIG_ERROR`
-  or `AI_QUOTA_EXHAUSTED` verdict, stop the whole run instead of spending the full retry budget on every
-  remaining test to rediscover the same missing env var. That is buildable today with `maxFailures`; a genuine
-  per-test dynamic budget would require replacing the runner, which is not worth it for this framework.
+- **A genuine per-test dynamic retry budget** — `retries` in `playwright.config.ts` is a single static number
+  read before the run starts; Playwright exposes no per-attempt hook to grant or deny a retry based on why the
+  previous attempt failed, so a real per-test budget would require replacing the runner. Not planned — the
+  reachable version of the idea is already built: `CONFIG_ERROR` (a missing credential) is caught by
+  `global-setup.ts` before any worker starts, so it never burns a retry budget at all, and `maxFailures: 10` (CI
+  only) stops the whole run once an unrelated, unfixable cause (e.g. an exhausted AI quota) starts failing tests,
+  instead of spending the full retry budget rediscovering the same cause on every remaining test.
 - **A reason-check gate before agent-fixer promotes a heal to permanent code** — today a `passed_with_recovery`
   step goes straight to a cache-lookup/AI-proposed fix with no check on _why_ the original locator broke: a
   slow-to-render element (a timing issue — the real fix is a wait, not a new selector) and an actual structural
@@ -601,8 +703,9 @@ path to wire in, since both callers already produce markdown in this shape.
   check #3 (assertion honesty) exists to catch, so a human has to be the one who merges it.
 - **CI enforcement for the page-knowledge convention** — no lint/CI check that the doc was updated alongside test
   code; it's a discipline convention, not an enforced one.
-- **Page-knowledge coverage** — five pages are documented (Text Box, Check Box, Buttons, Book Store Register, Web
-  Tables); the rest of the DemoQA pages haven't been explored yet.
+- **Page-knowledge coverage** — seven pages are documented (Text Box, Check Box, Buttons, Book Store Register, Book
+  Store List, Book Store Login, Web Tables); the rest of the DemoQA pages haven't been explored yet. Trust
+  `ls docs/page-knowledge/` over this line — a page gets documented more often than this count gets updated.
 
 ## Reports
 

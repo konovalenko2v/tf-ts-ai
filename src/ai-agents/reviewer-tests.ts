@@ -20,6 +20,7 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { parseClaudeJson } from './cli-fallback';
 import { recordAiUsage } from './usage-log';
+import { ReviewVerdict, parseReviewVerdict } from './review-verdict';
 
 const PERSONA_FILE = path.join(__dirname, '../../ai-agents/personas/reviewer-tests.md');
 const PROFILE_FILE = path.join(__dirname, '../../ai-agents/profiles/paranoid.env');
@@ -48,28 +49,13 @@ function requireProfileVar(name: string): string {
 const REVIEW_CLAUDE_TIER = requireProfileVar('AI_REVIEW_CLAUDE_TIER');
 const REVIEW_CLAUDE_EFFORT = requireProfileVar('AI_REVIEW_CLAUDE_EFFORT');
 
-export type Severity = 'ok' | 'minor' | 'major';
-
-export interface ReviewFinding {
-  check: string;
-  severity: Severity;
-  note: string;
-}
-
-export interface ReviewVerdict {
-  verdict: boolean;
-  findings: ReviewFinding[];
-}
-
-// Renders the structured verdict as short markdown bullets for a human skimming a PR body —
-// one line per check, severity tag up front, no run-on prose. See ai-agents/personas/reviewer-tests.md
-// "Output contract" for why: a single "one sentence" reason field made a 4-part review
-// (architecture/style/assertion-honesty/cleanup) unreadable once more than one check had a finding.
-export function renderVerdict(v: ReviewVerdict): string {
-  const icon: Record<Severity, string> = { ok: '✅', minor: '⚠️', major: '❌' };
-  const lines = v.findings.map((f) => `- ${icon[f.severity]} **${f.check}**: ${f.note}`);
-  return [`**Overall: ${v.verdict ? '✅ YES — safe to propose as-is' : '❌ NO — needs a look before merging'}**`, '', ...lines].join('\n');
-}
+// The verdict shape, its markdown renderer, and the VERDICT/bullet parser moved to ./review-verdict
+// so pr-reviewer.ts can share ONE copy of the grammar rather than carrying a second, independently
+// edited regex for the same `- [ok|minor|major] Check: note` bullets both personas emit. Two
+// hand-maintained copies of one string format is the exact drift this repo already got burned by
+// once (see CLAUDE.local.md's branch-prefix finding). Re-exported here so existing importers of
+// reviewer-tests keep working unchanged.
+export { Severity, ReviewFinding, ReviewVerdict, renderVerdict, parseReviewVerdict } from './review-verdict';
 
 export async function reviewGeneratedTest(testFilePath: string, referenceFilePath: string): Promise<ReviewVerdict> {
   const persona = fs.readFileSync(PERSONA_FILE, 'utf-8');
@@ -159,26 +145,5 @@ export async function reviewGeneratedTest(testFilePath: string, referenceFilePat
     throw new Error(`Could not parse claude's --output-format json response: ${stdout}`);
   }
 
-  const text = parsed.result ?? '';
-
-  const verdictMatch = text.match(/VERDICT:\s*(YES|NO)/i);
-  if (!verdictMatch) {
-    throw new Error(`Could not parse a VERDICT line from claude's response: ${text}`);
-  }
-
-  const findingLines = [...text.matchAll(/^-\s*\[(ok|minor|major)\]\s*([^:]+):\s*(.+)$/gim)];
-  const findings: ReviewFinding[] = findingLines.map((m) => ({
-    severity: m[1].toLowerCase() as Severity,
-    check: m[2].trim(),
-    note: m[3].trim(),
-  }));
-
-  if (findings.length === 0) {
-    throw new Error(`VERDICT line found but no [ok|minor|major] bullets parsed from claude's response: ${text}`);
-  }
-
-  return {
-    verdict: verdictMatch[1].toUpperCase() === 'YES',
-    findings,
-  };
+  return parseReviewVerdict(parsed.result ?? '');
 }

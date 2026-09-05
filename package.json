@@ -29,6 +29,7 @@
     "goal-evolution": "tsx src/goal-evolution/run.ts",
     "jira-triage": "tsx src/jira-triage/run.ts",
     "qa-analyst": "tsx src/ai-agents/qa-analyst.ts",
+    "pr-review": "tsx src/ai-agents/pr-reviewer.ts",
     "ai-usage-report": "tsx src/ai-agents/usage-report.ts",
     "agent-fixer:verify-stability": "tsx src/agent-fixer/verify-stability.ts",
     "agent-fixer:circuit-breaker": "tsx src/agent-fixer/circuit-breaker.ts"
