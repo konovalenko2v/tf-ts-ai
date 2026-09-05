@@ -168,6 +168,57 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
 
+  # AI review of the PR's full diff against this repo's stated rules (src/ai-agents/pr-reviewer.ts,
+  # ai-agents/personas/pr-reviewer.md) — the merge gate for every PR, whoever opened it.
+  #
+  # Deliberately NOT `needs: test`. The reviewer reads `gh pr diff`, not a test artifact, so gating
+  # it on the test job would only make the review skip (or wait) exactly when tests are red — which
+  # is when a second opinion is most useful, not least. It also gets the signal to the author sooner.
+  #
+  # Exits nonzero ONLY on a `major` finding. A missing AI_API_KEY, an exhausted Gemini quota, or
+  # output the persona's grammar can't parse all exit 0 with a loud "review unavailable" comment —
+  # those are facts about the infrastructure, not about the PR, and a check that goes red for
+  # reasons the author cannot act on is a check people learn to ignore. See pr-reviewer.ts's header
+  # for the full exit-code contract.
+  #
+  # NOTE: making this a *required* check (so GitHub itself refuses the merge button) is a branch-
+  # protection setting in the repo's GitHub settings — it cannot be turned on from a file in the
+  # repo. Until a human enables it for `master`, this job blocks the autonomous agent-fixer path
+  # below (via `needs`) but only advises a human clicking merge.
+  pr-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Top-level `permissions:` grants contents: read only — the verdict comment needs this.
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Review PR diff
+        run: npm run pr-review -- "${{ github.event.pull_request.number }}"
+        env:
+          # The default GITHUB_TOKEN is enough for `gh pr diff` / `gh pr comment` — no PAT needed,
+          # unlike agent-fixer, which pushes branches and merges.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          # Set explicitly rather than inherited: AI_MODEL/AI_MODEL_FALLBACK are healwright's own
+          # runtime healing allowance, and a review call quietly competing with self-healing for the
+          # same quota is how one feature starts breaking the other. Same pattern as jira-triage.
+          AI_MODEL: 'gemini-3.6-flash'
+          AI_MODEL_FALLBACK: 'gemini-3.5-flash'
+
   # Collects Jira context for every assertion-category failure and asks for a bug-vs-feature-change
   # verdict, per src/jira-triage/. PR-only: the branch-name-to-Jira-key parse
   # (src/jira-triage/collect-context.ts) is meaningless on `master` itself (no ticket key in that
@@ -302,11 +353,20 @@ jobs:
     # Unlike the `test` job's own always()-based continue-on-error reasoning (an unrelated api
     # flake shouldn't block a human-facing report), this gate guards an UNREVIEWED merge to
     # master — it must only proceed when the PR's own CI actually passed.
+    #
+    # pr-review is in `needs` because this is the ONE path in the repo that merges to master with
+    # no human at any point — so it is exactly the path an AI review gate exists to cover. Branch
+    # protection cannot help here: `gh pr merge` run by this job is the merge, and a required check
+    # would be satisfied by this same workflow anyway. Requiring `success` (not just `!= 'skipped'`)
+    # means a `major` finding stops the auto-merge outright. pr-reviewer exits 0 when the review
+    # could not RUN (no key, quota exhausted, unparseable reply — see its header), so a quota blip
+    # does not deadlock autonomy; only an actual blocking finding does.
     if: |
       needs.test.result == 'success' &&
+      needs['pr-review'].result == 'success' &&
       github.event_name == 'pull_request' &&
       startsWith(github.head_ref, 'agent-fixer/cache/')
-    needs: test
+    needs: [test, pr-review]
     runs-on: ubuntu-latest
     permissions:
       contents: write
