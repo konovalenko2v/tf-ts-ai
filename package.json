@@ -52,6 +52,6 @@
   "dependencies": {
     "@faker-js/faker": "^10.6.0",
     "dotenv": "^17.4.2",
-    "healwright": "^1.7.0"
+    "healwright": "^1.8.0"
   }
 }
