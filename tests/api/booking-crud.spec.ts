@@ -151,6 +151,19 @@ test.describe('Restful Booker API @ Booking CRUD', () => {
     expect(getResponse.status()).toBe(404);
   });
 
+  test('PUT /booking/{id} with a valid token on an already-deleted booking should return 405 Method Not Allowed', async ({ request }) => {
+    const created = await createTrackedBooking(bookingData.validBooking());
+    const token = await getAuthToken(request);
+
+    const deleteResponse = await bookingSteps.deleteBooking(created.bookingid, token);
+    expect(deleteResponse.status()).toBe(201);
+
+    // Naive expectation would be 404 (id no longer exists), but the live API returns 405 Method
+    // Not Allowed instead — same quirky-negative-case behavior noted in auth.spec.ts.
+    const updateResponse = await bookingSteps.updateBooking(created.bookingid, bookingData.validBooking(), token);
+    expect(updateResponse.status()).toBe(405);
+  });
+
   test.afterAll(async () => {
     const token = await getAuthToken(fixtureContext);
     for (const id of bookingIds) {
