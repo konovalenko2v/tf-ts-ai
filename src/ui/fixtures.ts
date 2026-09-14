@@ -16,9 +16,7 @@ const FALLBACK_MODEL = process.env.AI_MODEL_FALLBACK;
 function isQuotaExhausted(err: unknown): boolean {
   if (!(err instanceof HealError)) return false;
   const message = String((err as Error).message ?? '');
-  return message.includes('RESOURCE_EXHAUSTED')
-    || message.includes('"code":503')
-    || message.includes('"code":429');
+  return message.includes('RESOURCE_EXHAUSTED') || message.includes('"code":503') || message.includes('"code":429');
 }
 
 function buildHealPage(page: Page, model: string | undefined): HealPage {
