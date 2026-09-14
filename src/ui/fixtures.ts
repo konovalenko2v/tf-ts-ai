@@ -13,10 +13,19 @@ const HEAL_SYMBOL = Symbol.for('healwright');
 const PRIMARY_MODEL = process.env.AI_MODEL;
 const FALLBACK_MODEL = process.env.AI_MODEL_FALLBACK;
 
-function isQuotaExhausted(err: unknown): boolean {
+// Covers two distinct failure shapes, only one of which the model-switch below is a real fix for:
+// a 429/RESOURCE_EXHAUSTED quota error is genuinely per-model (Free-tier Gemini quotas are tracked
+// per model — confirmed by the 429 payload's quotaId "GenerateRequestsPerDayPerProjectPerModel-
+// FreeTier" — so a second model has its own untouched daily allowance). A 503/UNAVAILABLE
+// ("experiencing high demand") is transient shared-capacity trouble, not a quota — a sibling model
+// may sit behind the same overloaded backend, so switching models here is a best-effort attempt,
+// not the guarantee the 429 path is. Also note the switch is per-test, not per-run: `page` fixture
+// below rebuilds this wrapper (and resets switchedToFallback) on every Playwright retry, so a 503
+// that recurs across retries hits the primary model again each time rather than staying on fallback.
+function isRetryableAiError(err: unknown): boolean {
   if (!(err instanceof HealError)) return false;
   const message = String((err as Error).message ?? '');
-  return message.includes('RESOURCE_EXHAUSTED') || message.includes('"code":429');
+  return message.includes('RESOURCE_EXHAUSTED') || message.includes('"code":503') || message.includes('"code":429');
 }
 
 function buildHealPage(page: Page, model: string | undefined): HealPage {
@@ -24,11 +33,9 @@ function buildHealPage(page: Page, model: string | undefined): HealPage {
   return withHealing(page, model ? { model } : undefined);
 }
 
-// Free-tier Gemini quotas are tracked per model (confirmed by the 429 payload itself:
-// quotaId "GenerateRequestsPerDayPerProjectPerModel-FreeTier", scoped to one `model`), so a
-// second model still has its own untouched daily allowance. The call that hit the 429 is retried
-// once against AI_MODEL_FALLBACK; every later heal.* call in the same test also goes straight to
-// the fallback, since withHealing mutates the shared page object rather than returning a copy.
+// The call that failed is retried once against AI_MODEL_FALLBACK; every later heal.* call in the
+// same test also goes straight to the fallback, since withHealing mutates the shared page object
+// rather than returning a copy.
 type HealFn = (...args: unknown[]) => unknown;
 
 function withModelFallback(page: Page, healPage: HealPage): HealPage {
@@ -55,10 +62,10 @@ function withModelFallback(page: Page, healPage: HealPage): HealPage {
       try {
         return await fn.apply(healPage.heal, args);
       } catch (err) {
-        if (!isQuotaExhausted(err)) throw err;
+        if (!isRetryableAiError(err)) throw err;
         switchedToFallback = true;
         process.stderr.write(
-          `[healwright] ${PRIMARY_MODEL ?? 'default model'} quota exhausted — switching to fallback model ${FALLBACK_MODEL} for the rest of this test\n`,
+          `[healwright] ${PRIMARY_MODEL ?? 'default model'} failed (quota or transient unavailability) — switching to fallback model ${FALLBACK_MODEL} for the rest of this test\n`,
         );
         buildHealPage(page, FALLBACK_MODEL);
         const fallbackHeal = healPage.heal as unknown as Record<string, HealFn>;

@@ -32,7 +32,8 @@
     "pr-review": "tsx src/ai-agents/pr-reviewer.ts",
     "ai-usage-report": "tsx src/ai-agents/usage-report.ts",
     "agent-fixer:verify-stability": "tsx src/agent-fixer/verify-stability.ts",
-    "agent-fixer:circuit-breaker": "tsx src/agent-fixer/circuit-breaker.ts"
+    "agent-fixer:circuit-breaker": "tsx src/agent-fixer/circuit-breaker.ts",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -44,6 +45,8 @@
     "c8": "^12.0.0",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.5.1",
     "prettier": "^3.9.6",
     "tsx": "^4.23.13",
     "typescript": "^5.6.0",
@@ -53,5 +56,8 @@
     "@faker-js/faker": "^10.6.0",
     "dotenv": "^17.4.2",
     "healwright": "^1.8.0"
+  },
+  "lint-staged": {
+    "*": "prettier --ignore-unknown --write"
   }
 }

@@ -1,0 +1,1445 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>gFit — аудит покрытия</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --hairline: rgba(255,255,255,0.08);
+    --hairline-strong: rgba(255,255,255,0.14);
+    --text: #f5f5f7;
+    --text-dim: #98989d;
+    --text-faint: #636366;
+    --accent: #0a84ff;
+    --accent-dim: rgba(10,132,255,0.16);
+    --red: #ff453a;
+    --red-dim: rgba(255,69,58,0.16);
+    --orange: #ff9f0a;
+    --orange-dim: rgba(255,159,10,0.16);
+    --yellow: #ffd60a;
+    --yellow-dim: rgba(255,214,10,0.14);
+    --green: #30d158;
+    --green-dim: rgba(48,209,88,0.16);
+    --grey: #8e8e93;
+    --grey-dim: rgba(142,142,147,0.16);
+    --radius-lg: 18px;
+    --radius-md: 14px;
+    --radius-sm: 9px;
+    --font-display: -apple-system, "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-text: -apple-system, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-text);
+    font-size: 15px;
+    line-height: 1.47;
+  }
+  ::selection { background: var(--accent); color: #fff; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :target { scroll-margin-top: 24px; }
+  :target.finding { outline: 2px solid var(--accent); outline-offset: 2px; }
+  :target .row { }
+  .row:target, div.row:target { background: var(--accent-dim); }
+
+  .page { max-width: 1040px; margin: 0 auto; padding: 64px 24px 120px; }
+
+  /* ---------- Hero ---------- */
+  .hero { margin-bottom: 48px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 10px;
+  }
+  h1.title {
+    font-family: var(--font-display);
+    font-size: 40px; font-weight: 700; letter-spacing: -0.02em;
+    margin: 0 0 8px; text-wrap: balance;
+  }
+  .subtitle { color: var(--text-dim); font-size: 16px; margin: 0 0 28px; max-width: 60ch; }
+  .hero-meta { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; color: var(--text-faint); }
+  .hero-meta code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+    background: var(--surface); border: 1px solid var(--hairline); padding: 2px 7px; border-radius: 6px;
+    color: var(--text-dim);
+  }
+
+  /* ---------- Summary dashboard ---------- */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .ring-card {
+    background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg);
+    padding: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    grid-row: span 2;
+  }
+  .ring-wrap { position: relative; width: 132px; height: 132px; }
+  .ring-wrap svg { transform: rotate(-90deg); }
+  .ring-pct {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .ring-pct .num { font-family: var(--font-display); font-size: 30px; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .ring-pct .cap { font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px; }
+  .ring-card .ring-label { font-size: 12.5px; color: var(--text-dim); text-align: center; margin-top: 4px; }
+
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-md);
+    padding: 16px 18px; display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  }
+  .stat-card .num { font-family: var(--font-display); font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .stat-card .label { font-size: 12px; color: var(--text-dim); }
+  .stat-card.crit .num { color: var(--red); }
+  .stat-card.major .num { color: var(--orange); }
+  .stat-card.minor .num { color: var(--yellow); }
+  .stat-card.done .num { color: var(--green); }
+  .stat-card.fail .num { color: var(--red); }
+  .stat-card.skip .num { color: var(--text-faint); }
+
+  /* ---------- Section headers ---------- */
+  h2.group-title {
+    font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-dim); margin: 44px 0 10px; padding: 0 4px;
+  }
+  h2.group-title .count { color: var(--text-faint); font-weight: 500; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+  p.section-note { color: var(--text-dim); font-size: 13.5px; margin: -2px 0 16px; padding: 0 4px; max-width: 68ch; }
+
+  /* ---------- Status pills ---------- */
+  .stat-pill {
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 100px;
+  }
+  .stat-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .stat-pill.passed { background: var(--green-dim); color: var(--green); }
+  .stat-pill.passed::before { background: var(--green); }
+  .stat-pill.failed { background: var(--red-dim); color: var(--red); }
+  .stat-pill.failed::before { background: var(--red); }
+  .stat-pill.failed:hover { text-decoration: underline; }
+  .stat-pill.skipped { background: var(--grey-dim); color: var(--grey); }
+  .stat-pill.skipped::before { background: var(--grey); }
+
+  /* ---------- Priority chips ---------- */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
+    padding: 4px 9px; border-radius: 100px; height: fit-content;
+  }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .chip.p0 { background: var(--red-dim); color: var(--red); }
+  .chip.p0::before { background: var(--red); }
+  .chip.p1 { background: var(--orange-dim); color: var(--orange); }
+  .chip.p1::before { background: var(--orange); }
+  .chip.p2 { background: var(--yellow-dim); color: var(--yellow); }
+  .chip.p2::before { background: var(--yellow); }
+  .chip.p3 { background: var(--grey-dim); color: var(--grey); }
+  .chip.p3::before { background: var(--grey); }
+
+  /* ---------- Matrix table ---------- */
+  .matrix-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--hairline); }
+  table.matrix {
+    width: 100%; border-collapse: collapse; background: var(--surface); font-size: 13.5px;
+  }
+  table.matrix th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-faint); font-weight: 700; background: var(--surface-2);
+    padding: 10px 14px; border-bottom: 1px solid var(--hairline); position: sticky; top: 0;
+  }
+  table.matrix td {
+    padding: 10px 14px; border-bottom: 1px solid var(--hairline); vertical-align: middle;
+  }
+  table.matrix tbody tr:last-child td { border-bottom: none; }
+  table.matrix tbody tr:hover { background: rgba(255,255,255,0.02); }
+  table.matrix td.num { color: var(--text-faint); font-variant-numeric: tabular-nums; width: 32px; }
+  table.matrix td.cat-cell { color: var(--text-dim); font-size: 12.5px; white-space: nowrap; }
+
+  /* ---------- Grouped detail cards ---------- */
+  .group {
+    background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg);
+    overflow: hidden; margin-bottom: 14px; scroll-margin-top: 20px;
+  }
+  .category-head {
+    padding: 12px 18px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-faint); background: var(--surface-2); border-bottom: 1px solid var(--hairline);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 34px 1fr auto auto;
+    align-items: start;
+    gap: 14px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--hairline);
+    scroll-margin-top: 20px;
+    transition: background 0.6s;
+  }
+  .row:last-child { border-bottom: none; }
+  .row-num { color: var(--text-faint); font-size: 12.5px; font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .row-main .row-title { font-size: 14.5px; font-weight: 500; margin: 0 0 4px; }
+  .row-main .row-story {
+    font-size: 13px; color: var(--text-dim); margin: 0 0 5px; line-height: 1.5; font-style: italic;
+  }
+  .row-main .row-story b { color: var(--accent); font-weight: 600; font-style: normal; }
+  .row-main .row-criteria {
+    font-size: 12.5px; color: var(--text-faint); margin: 0; line-height: 1.5;
+  }
+  .row-main .row-criteria b { color: var(--text-dim); font-weight: 600; }
+  .row-main .row-comment { font-size: 12.5px; color: var(--text-faint); margin: 6px 0 0; }
+  .row-main code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+  .back-to-matrix { font-size: 11px; color: var(--text-faint); }
+
+  @media (max-width: 720px) {
+    .row { grid-template-columns: 24px 1fr; }
+    .row-num { display:none; }
+    .chip, .stat-pill { grid-column: 2; margin-top: 6px; }
+  }
+
+  /* ---------- Findings ---------- */
+  .finding {
+    background: var(--surface); border: 1px solid var(--hairline); border-left: 3px solid var(--grey);
+    border-radius: var(--radius-md); padding: 20px 22px; margin-bottom: 14px; scroll-margin-top: 20px;
+  }
+  .finding.p0 { border-left-color: var(--red); }
+  .finding.p1 { border-left-color: var(--orange); }
+  .finding.p2 { border-left-color: var(--yellow); }
+  .finding .fhead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .finding .fid { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--text-faint); }
+  .finding .ftitle { font-family: var(--font-display); font-size: 17px; font-weight: 600; margin: 0; letter-spacing: -0.005em; }
+  .finding .fbody p { margin: 7px 0; font-size: 13.5px; color: var(--text-dim); }
+  .finding .fbody p b.lbl { color: var(--text); font-weight: 600; }
+  .finding .fbody code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; background: var(--surface-2); padding: 1px 6px; border-radius: 5px; color: var(--text-dim); }
+  .finding .shots { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .finding .shots figure { margin: 0; width: 240px; }
+  .finding .shots img { width: 100%; border: 1px solid var(--hairline); border-radius: 10px; display: block; }
+  .finding .shots figcaption { font-size: 10.5px; color: var(--text-faint); margin-top: 5px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  .note-box {
+    background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-md);
+    padding: 18px 22px; font-size: 13.5px; color: var(--text-dim);
+  }
+  .note-box code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; background: var(--surface-2); padding: 1px 6px; border-radius: 5px; color: var(--text-dim); }
+  .note-box.accent { border-color: rgba(10,132,255,0.3); background: var(--accent-dim); color: var(--text); }
+  .note-box.accent b { color: var(--accent); }
+  .note-box.warn { border-color: rgba(255,69,58,0.3); background: var(--red-dim); color: var(--text); }
+  .note-box.warn b { color: var(--red); }
+
+  .screens-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .screens-grid figure { margin: 0; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-md); overflow: hidden; }
+  .screens-grid img { width: 100%; display: block; }
+  .screens-grid figcaption { padding: 8px 10px; font-size: 11px; color: var(--text-faint); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--hairline); color: var(--text-faint); font-size: 12px; }
+
+  @media (max-width: 860px) {
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .ring-card { grid-row: span 1; grid-column: span 2; flex-direction: row; justify-content: flex-start; gap: 20px; }
+    .screens-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="hero">
+    <p class="eyebrow">QA · UI/UX-аудит покрытия</p>
+    <h1 class="title">gFit — онбординг-воронка</h1>
+    <p class="subtitle">Полная карта сценариев для 100% UI-покрытия онбординга: приоритет, юзкейс и статус — Passed / Failed (со ссылкой на баг) / Skipped.</p>
+    <div class="hero-meta">
+      <span>Сайт <code>app.gfit.world</code></span>
+      <span>Дата 2026-09-09</span>
+      <span>Chromium · 1440×900</span>
+      <span>Без создания аккаунта и оплаты</span>
+    </div>
+  </div>
+
+  <!-- ================= SUMMARY ================= -->
+  <div class="summary-grid">
+    <div class="ring-card">
+      <div class="ring-wrap">
+        <svg width="132" height="132" viewBox="0 0 132 132">
+          <circle cx="66" cy="66" r="58" fill="none" stroke="var(--surface-2)" stroke-width="12"/>
+          <circle cx="66" cy="66" r="58" fill="none" stroke="var(--green)" stroke-width="12"
+                  stroke-linecap="round" stroke-dasharray="364.4" stroke-dashoffset="277.0"/>
+        </svg>
+        <div class="ring-pct"><span class="num">24%</span><span class="cap">passed</span></div>
+      </div>
+      <div class="ring-label">12 из 50 сценариев<br>прошли полностью</div>
+    </div>
+    <div class="stat-card done"><span class="num">12</span><span class="label">Passed</span></div>
+    <div class="stat-card fail"><span class="num">7</span><span class="label">Failed</span></div>
+    <div class="stat-card skip"><span class="num">31</span><span class="label">Skipped</span></div>
+    <div class="stat-card crit"><span class="num">2</span><span class="label">Находок P0 (критично)</span></div>
+    <div class="stat-card major"><span class="num">3</span><span class="label">Находок P1 (серьёзно)</span></div>
+    <div class="stat-card minor"><span class="num">3</span><span class="label">Находок P2 (незначительно)</span></div>
+    <div class="stat-card"><span class="num" style="color:var(--text)">50</span><span class="label">Сценариев в матрице</span></div>
+  </div>
+
+  <div class="note-box warn">
+    <b>Полная воронка не пройдена.</b> Прохождение продвинулось до <code>weight_goal</code> (<code>activity</code> пройден), но остановилось на пикере целевого веса — 5 разных способов ввода (клик, wheel, mouse-drag, touch tap, низкоуровневый CDP touch-drag) не активировали Continue, см. <a href="#F-7">F-7</a>. Отдельно проверен мобильный viewport (iPhone 13) — найденный ранее overlap-баг <a href="#F-1">F-1</a> там <b>не воспроизводится</b>, что подтверждает: проблема именно в desktop-адаптации мобильной вёрстки. Ниже везде статус «Failed» ведёт по ссылке прямо к описанию соответствующей находки.
+  </div>
+
+  <!-- ================= LEGEND ================= -->
+  <h2 class="group-title">Как читать таблицу</h2>
+  <div class="matrix-wrap" style="margin-bottom: 12px;">
+    <table class="matrix">
+      <tbody>
+        <tr><td style="width:110px"><span class="stat-pill passed">Passed</span></td><td>сценарий проверен и работает корректно.</td></tr>
+        <tr><td><span class="stat-pill failed">Failed → F-N</span></td><td>сценарий проверен, найден дефект — ссылка ведёт к его описанию.</td></tr>
+        <tr><td><span class="stat-pill skipped">Skipped</span></td><td>сценарий не проверялся в рамках этого аудита (см. «Границы аудита» внизу).</td></tr>
+        <tr><td><span class="chip p0">P0</span></td><td>критично — блокирует воронку или ведёт к потере данных. Чинить до релиза.</td></tr>
+        <tr><td><span class="chip p1">P1</span></td><td>серьёзно — портит опыт/доверие, но есть обходной путь.</td></tr>
+        <tr><td><span class="chip p2">P2</span></td><td>незначительно — полировка, не мешает выполнить задачу.</td></tr>
+        <tr><td><span class="chip p3">P3</span></td><td>не горит — регрессионная проверка / технический долг.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= MATRIX ================= -->
+  <h2 class="group-title">Матрица результатов <span class="count">50 сценариев, отсортировано Passed → Failed → Skipped</span></h2>
+  <div class="matrix-wrap">
+    <table class="matrix">
+      <thead>
+        <tr><th>#</th><th>Сценарий</th><th>Категория</th><th>Приоритет</th><th>Статус</th></tr>
+      </thead>
+      <tbody>
+        
+      <tr>
+        <td class="num">6</td>
+        <td><a href="#S-6">Ветка «уже есть аккаунт»</a></td>
+        <td class="cat-cell">Ветвление и выбор</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">7</td>
+        <td><a href="#S-7">Ветка «создать план»</a></td>
+        <td class="cat-cell">Ветвление и выбор</td>
+        <td><span class="chip p0">P0</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">8</td>
+        <td><a href="#S-8">Выбор пола — «Woman»</a></td>
+        <td class="cat-cell">Ветвление и выбор</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">10</td>
+        <td><a href="#S-10">Мультивыбор цели — одна опция</a></td>
+        <td class="cat-cell">Ветвление и выбор</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">13</td>
+        <td><a href="#S-13">Переключение единиц cm/kg ↔ in/lb</a></td>
+        <td class="cat-cell">Ветвление и выбор</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">14</td>
+        <td><a href="#S-14">Уровень активности (5 опций)</a></td>
+        <td class="cat-cell">Ветвление и выбор</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">29</td>
+        <td><a href="#S-29">Мобильное разрешение (375×667, 390×844)</a></td>
+        <td class="cat-cell">Визуальная и адаптивная вёрстка</td>
+        <td><span class="chip p0">P0</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">31</td>
+        <td><a href="#S-31">Отсутствие горизонтального скролла</a></td>
+        <td class="cat-cell">Визуальная и адаптивная вёрстка</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">36</td>
+        <td><a href="#S-36">Console errors</a></td>
+        <td class="cat-cell">Технические и служебные проверки</td>
+        <td><span class="chip p0">P0</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">37</td>
+        <td><a href="#S-37">HTTP-ошибки собственного бэкенда</a></td>
+        <td class="cat-cell">Технические и служебные проверки</td>
+        <td><span class="chip p0">P0</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">38</td>
+        <td><a href="#S-38">Целостность изображений</a></td>
+        <td class="cat-cell">Технические и служебные проверки</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">48</td>
+        <td><a href="#S-48">Chromium / Chrome</a></td>
+        <td class="cat-cell">Кроссбраузерность</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill passed">Passed</span></td>
+      </tr>
+      <tr>
+        <td class="num">1</td>
+        <td><a href="#S-1">Полное прохождение воронки</a></td>
+        <td class="cat-cell">Навигация · Happy path</td>
+        <td><span class="chip p0">P0</span></td>
+        <td><a class="stat-pill failed" href="#F-7">Failed → F-7</a></td>
+      </tr>
+      <tr>
+        <td class="num">24</td>
+        <td><a href="#S-24">Чекбокс согласия блокирует Continue</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p0">P0</span></td>
+        <td><a class="stat-pill failed" href="#F-1">Failed → F-1</a></td>
+      </tr>
+      <tr>
+        <td class="num">25</td>
+        <td><a href="#S-25">Целевой вес (goal weight picker)</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p0">P0</span></td>
+        <td><a class="stat-pill failed" href="#F-7">Failed → F-7</a></td>
+      </tr>
+      <tr>
+        <td class="num">27</td>
+        <td><a href="#S-27">Desktop-разрешения (1440×900 и шире)</a></td>
+        <td class="cat-cell">Визуальная и адаптивная вёрстка</td>
+        <td><span class="chip p0">P0</span></td>
+        <td><a class="stat-pill failed" href="#F-1">Failed → F-1</a></td>
+      </tr>
+      <tr>
+        <td class="num">32</td>
+        <td><a href="#S-32">Интерактивные элементы не перекрываются</a></td>
+        <td class="cat-cell">Визуальная и адаптивная вёрстка</td>
+        <td><span class="chip p0">P0</span></td>
+        <td><a class="stat-pill failed" href="#F-1">Failed → F-1</a></td>
+      </tr>
+      <tr>
+        <td class="num">33</td>
+        <td><a href="#S-33">Контраст текста на фоновых изображениях</a></td>
+        <td class="cat-cell">Визуальная и адаптивная вёрстка</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><a class="stat-pill failed" href="#F-3">Failed → F-3</a></td>
+      </tr>
+      <tr>
+        <td class="num">45</td>
+        <td><a href="#S-45">ARIA-роли на кастомных компонентах</a></td>
+        <td class="cat-cell">Доступность (a11y)</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><a class="stat-pill failed" href="#F-8">Failed → F-8</a></td>
+      </tr>
+      <tr>
+        <td class="num">2</td>
+        <td><a href="#S-2">Кнопка «Назад» сохраняет данные</a></td>
+        <td class="cat-cell">Навигация · Happy path</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">3</td>
+        <td><a href="#S-3">Прогресс-бар отражает текущий шаг</a></td>
+        <td class="cat-cell">Навигация · Happy path</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">4</td>
+        <td><a href="#S-4">Обновление страницы посреди квиза</a></td>
+        <td class="cat-cell">Навигация · Happy path</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">5</td>
+        <td><a href="#S-5">Прямой переход по глубокой ссылке</a></td>
+        <td class="cat-cell">Навигация · Happy path</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">9</td>
+        <td><a href="#S-9">Выбор пола — «Man»</a></td>
+        <td class="cat-cell">Ветвление и выбор</td>
+        <td><span class="chip p3">P3</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">11</td>
+        <td><a href="#S-11">Мультивыбор цели — несколько опций</a></td>
+        <td class="cat-cell">Ветвление и выбор</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">12</td>
+        <td><a href="#S-12">Мультивыбор цели — ничего не выбрано</a></td>
+        <td class="cat-cell">Ветвление и выбор</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">15</td>
+        <td><a href="#S-15">Логин — неверные креды</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p0">P0</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">16</td>
+        <td><a href="#S-16">«Forgot your password?»</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">17</td>
+        <td><a href="#S-17">«Create Account»</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">18</td>
+        <td><a href="#S-18">«Continue as Guest»</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">19</td>
+        <td><a href="#S-19">Имя — пустое поле</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">20</td>
+        <td><a href="#S-20">Имя — граничные значения</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">21</td>
+        <td><a href="#S-21">Дата рождения — крайние значения списка</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">22</td>
+        <td><a href="#S-22">Дата рождения — реалистичность возраста</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">23</td>
+        <td><a href="#S-23">Рост/вес — крайние значения</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">26</td>
+        <td><a href="#S-26">Ссылка Privacy Policy рабочая</a></td>
+        <td class="cat-cell">Ввод данных и валидация форм</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">28</td>
+        <td><a href="#S-28">Планшетное разрешение (768×1024)</a></td>
+        <td class="cat-cell">Визуальная и адаптивная вёрстка</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">30</td>
+        <td><a href="#S-30">Альбомная ориентация</a></td>
+        <td class="cat-cell">Визуальная и адаптивная вёрстка</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">34</td>
+        <td><a href="#S-34">Состояния hover / focus / active</a></td>
+        <td class="cat-cell">Визуальная и адаптивная вёрстка</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">35</td>
+        <td><a href="#S-35">Поведение на медленной сети</a></td>
+        <td class="cat-cell">Визуальная и адаптивная вёрстка</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">39</td>
+        <td><a href="#S-39">Время перехода между шагами</a></td>
+        <td class="cat-cell">Технические и служебные проверки</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">40</td>
+        <td><a href="#S-40">SEO / мета-теги</a></td>
+        <td class="cat-cell">Технические и служебные проверки</td>
+        <td><span class="chip p3">P3</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">41</td>
+        <td><a href="#S-41">Поведение при отключённом JS</a></td>
+        <td class="cat-cell">Технические и служебные проверки</td>
+        <td><span class="chip p3">P3</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">42</td>
+        <td><a href="#S-42">Сохранение состояния между вкладками</a></td>
+        <td class="cat-cell">Технические и служебные проверки</td>
+        <td><span class="chip p3">P3</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">43</td>
+        <td><a href="#S-43">Полное прохождение только с клавиатуры</a></td>
+        <td class="cat-cell">Доступность (a11y)</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">44</td>
+        <td><a href="#S-44">Видимый focus outline</a></td>
+        <td class="cat-cell">Доступность (a11y)</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">46</td>
+        <td><a href="#S-46">Проверка screen reader</a></td>
+        <td class="cat-cell">Доступность (a11y)</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">47</td>
+        <td><a href="#S-47">Автоматический a11y-скан</a></td>
+        <td class="cat-cell">Доступность (a11y)</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">49</td>
+        <td><a href="#S-49">Firefox</a></td>
+        <td class="cat-cell">Кроссбраузерность</td>
+        <td><span class="chip p2">P2</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      <tr>
+        <td class="num">50</td>
+        <td><a href="#S-50">WebKit / Safari</a></td>
+        <td class="cat-cell">Кроссбраузерность</td>
+        <td><span class="chip p1">P1</span></td>
+        <td><span class="stat-pill skipped">Skipped</span></td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ================= SCENARIO DETAILS ================= -->
+  <h2 class="group-title">Детали сценариев <span class="count">user story + критерий приёмки</span></h2>
+  <p class="section-note">Каждая карточка — сценарий из матрицы выше. Клик по номеру в матрице ведёт сюда; клик по «Failed» — к описанию дефекта.</p>
+
+    <div class="group">
+    <div class="category-head">Навигация · Happy path</div>
+
+    <div class="row" id="S-1">
+      <span class="row-num">1</span>
+      <div class="row-main">
+        <p class="row-title">Полное прохождение воронки</p>
+        <p class="row-story">Как <b>новый посетитель</b>, я хочу пройти весь квиз от начала до конца, чтобы получить свой готовый фитнес-план.</p>
+        <p class="row-criteria"><b>Приёмка:</b> после последнего шага виден финальный экран — сгенерированный план или предложение подписки.</p>
+        <p class="row-comment">Дошли до <code>weight_goal</code> (шаг 9 из как минимум 10) — дальше блокирует F-7. Пять разных методов ввода испробованы на пикере (клик, wheel, mouse-drag, touchscreen.tap, полноценный CDP touch-drag), ни один не активировал Continue — см. F-7 для деталей.</p>
+      </div>
+      <span class="chip p0">P0</span>
+      <a class="stat-pill failed" href="#F-7">Failed → F-7</a>
+    </div>
+
+    <div class="row" id="S-2">
+      <span class="row-num">2</span>
+      <div class="row-main">
+        <p class="row-title">Кнопка «Назад» сохраняет данные</p>
+        <p class="row-story">Как пользователь, я хочу вернуться на предыдущий шаг и не потерять уже введённые данные, чтобы не заполнять всё заново.</p>
+        <p class="row-criteria"><b>Приёмка:</b> после «назад» → «вперёд» ранее введённые значения на месте.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-3">
+      <span class="row-num">3</span>
+      <div class="row-main">
+        <p class="row-title">Прогресс-бар отражает текущий шаг</p>
+        <p class="row-story">Как пользователь, я хочу видеть, сколько шагов квиза осталось, чтобы понимать, сколько ещё времени это займёт.</p>
+        <p class="row-criteria"><b>Приёмка:</b> индикатор прогресса обновляется на каждом переходе между шагами.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-4">
+      <span class="row-num">4</span>
+      <div class="row-main">
+        <p class="row-title">Обновление страницы посреди квиза</p>
+        <p class="row-story">Как пользователь, я хочу, чтобы случайное обновление страницы (F5) не сломало мой прогресс, чтобы не бояться потерять введённые данные.</p>
+        <p class="row-criteria"><b>Приёмка:</b> после F5 прогресс либо сохраняется, либо явно и предсказуемо сбрасывается — без «случайного» поведения.</p>
+        <p class="row-comment">Замечена нестабильность между прогонами headless-краулера (иногда сразу редиректило на sign-in) — не изолирована как воспроизводимый кейс.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-5">
+      <span class="row-num">5</span>
+      <div class="row-main">
+        <p class="row-title">Прямой переход по глубокой ссылке</p>
+        <p class="row-story">Как пользователь, случайно открывший ссылку на середину квиза (например, из истории браузера), я хочу попасть на осмысленный экран, а не увидеть сломанную страницу.</p>
+        <p class="row-criteria"><b>Приёмка:</b> без активной сессии открытие глубокой ссылки корректно редиректит на начало.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+  </div>
+  <div class="group">
+    <div class="category-head">Ветвление и выбор</div>
+
+    <div class="row" id="S-6">
+      <span class="row-num">6</span>
+      <div class="row-main">
+        <p class="row-title">Ветка «уже есть аккаунт»</p>
+        <p class="row-story">Как возвращающийся пользователь, я хочу сразу попасть на вход по клику «Yes, log in», чтобы не проходить квиз заново.</p>
+        <p class="row-criteria"><b>Приёмка:</b> клик по «Yes, log in» ведёт на форму входа.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-7">
+      <span class="row-num">7</span>
+      <div class="row-main">
+        <p class="row-title">Ветка «создать план»</p>
+        <p class="row-story">Как новый пользователь без аккаунта, я хочу начать квиз по клику «No, create a fitness plan», чтобы получить персональный план.</p>
+        <p class="row-criteria"><b>Приёмка:</b> клик ведёт в первый шаг квиза.</p>
+      </div>
+      <span class="chip p0">P0</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-8">
+      <span class="row-num">8</span>
+      <div class="row-main">
+        <p class="row-title">Выбор пола — «Woman»</p>
+        <p class="row-story">Как пользователь, я хочу выбрать свой пол и видеть, что выбор принят, чтобы быть уверенной в правильности данных.</p>
+        <p class="row-criteria"><b>Приёмка:</b> опция подсвечивается при выборе, Continue ведёт дальше.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-9">
+      <span class="row-num">9</span>
+      <div class="row-main">
+        <p class="row-title">Выбор пола — «Man»</p>
+        <p class="row-story">Как пользователь, я хочу так же надёжно выбрать «Man», как и «Woman», чтобы обе опции работали одинаково.</p>
+        <p class="row-criteria"><b>Приёмка:</b> симметричность поведения не гарантирована, пока не проверена явно.</p>
+      </div>
+      <span class="chip p3">P3</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-10">
+      <span class="row-num">10</span>
+      <div class="row-main">
+        <p class="row-title">Мультивыбор цели — одна опция</p>
+        <p class="row-story">Как пользователь, я хочу отметить свою главную цель из списка, чтобы план подстроился под неё.</p>
+        <p class="row-criteria"><b>Приёмка:</b> выбор одной из 10 опций активирует Continue.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-11">
+      <span class="row-num">11</span>
+      <div class="row-main">
+        <p class="row-title">Мультивыбор цели — несколько опций</p>
+        <p class="row-story">Как пользователь с несколькими целями, я хочу отметить сразу несколько пунктов, чтобы план учёл их все.</p>
+        <p class="row-criteria"><b>Приёмка:</b> все выбранные опции визуально отмечены; лимит либо отсутствует, либо явно обозначен.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-12">
+      <span class="row-num">12</span>
+      <div class="row-main">
+        <p class="row-title">Мультивыбор цели — ничего не выбрано</p>
+        <p class="row-story">Как пользователь, я хочу получить понятную подсказку, если забыл выбрать цель, чтобы не застрять на шаге без объяснений.</p>
+        <p class="row-criteria"><b>Приёмка:</b> Continue неактивна либо явное сообщение «выберите хотя бы одну цель».</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-13">
+      <span class="row-num">13</span>
+      <div class="row-main">
+        <p class="row-title">Переключение единиц cm/kg ↔ in/lb</p>
+        <p class="row-story">Как пользователь из США, я хочу вводить рост и вес в футах/фунтах вместо см/кг, чтобы не пересчитывать значения в уме.</p>
+        <p class="row-criteria"><b>Приёмка:</b> переключение единиц пересчитывает значения корректно (160.4 cm → 5'3", 115.4 kg → 254.4 lb).</p>
+        <p class="row-comment">Переключение снято на скриншот, арифметика конверсии проверена (115.4kg → 254.4lb, 160.4cm → 5'3") — сходится.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-14">
+      <span class="row-num">14</span>
+      <div class="row-main">
+        <p class="row-title">Уровень активности (5 опций)</p>
+        <p class="row-story">Как пользователь, я хочу указать свой обычный уровень активности, чтобы план учитывал реальный расход калорий.</p>
+        <p class="row-criteria"><b>Приёмка:</b> выбор одной из 5 опций («Mostly sitting all day» … «On the move constantly») активирует Continue.</p>
+        <p class="row-comment">Новый экран, найден при повторном прохождении — не был в первой версии отчёта.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+  </div>
+  <div class="group">
+    <div class="category-head">Ввод данных и валидация форм</div>
+
+    <div class="row" id="S-15">
+      <span class="row-num">15</span>
+      <div class="row-main">
+        <p class="row-title">Логин — неверные креды</p>
+        <p class="row-story">Как возвращающийся пользователь, я хочу понять, что ошибся в пароле, чтобы сразу исправить и не гадать, что пошло не так.</p>
+        <p class="row-criteria"><b>Приёмка:</b> понятное сообщение об ошибке, форма не роняет введённые значения.</p>
+      </div>
+      <span class="chip p0">P0</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-16">
+      <span class="row-num">16</span>
+      <div class="row-main">
+        <p class="row-title">«Forgot your password?»</p>
+        <p class="row-story">Как пользователь, забывший пароль, я хочу восстановить доступ по клику на ссылку, чтобы не создавать новый аккаунт.</p>
+        <p class="row-criteria"><b>Приёмка:</b> ссылка ведёт на рабочий флоу восстановления пароля.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-17">
+      <span class="row-num">17</span>
+      <div class="row-main">
+        <p class="row-title">«Create Account»</p>
+        <p class="row-story">Как новый пользователь, попавший на форму входа по ошибке, я хочу быстро перейти к регистрации, чтобы не искать этот переход отдельно.</p>
+        <p class="row-criteria"><b>Приёмка:</b> клик ведёт на форму регистрации.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-18">
+      <span class="row-num">18</span>
+      <div class="row-main">
+        <p class="row-title">«Continue as Guest»</p>
+        <p class="row-story">Как пользователь, не готовый регистрироваться сразу, я хочу попробовать приложение как гость, чтобы оценить его прежде чем создавать аккаунт.</p>
+        <p class="row-criteria"><b>Приёмка:</b> пускает в приложение без регистрации, ограничения гостевого режима явно обозначены.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-19">
+      <span class="row-num">19</span>
+      <div class="row-main">
+        <p class="row-title">Имя — пустое поле</p>
+        <p class="row-story">Как пользователь, я хочу, чтобы система не пускала меня дальше без имени, чтобы мой план не остался безымянным.</p>
+        <p class="row-criteria"><b>Приёмка:</b> Continue неактивна при пустом поле.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-20">
+      <span class="row-num">20</span>
+      <div class="row-main">
+        <p class="row-title">Имя — граничные значения</p>
+        <p class="row-story">Как пользователь с необычным именем (с эмодзи, дефисом, длинным написанием), я хочу, чтобы поле корректно его приняло, чтобы не чувствовать себя «нестандартным».</p>
+        <p class="row-criteria"><b>Приёмка:</b> эмодзи/спецсимволы/длинная строка/только пробелы — либо принимаются корректно, либо валидируются с понятным сообщением.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-21">
+      <span class="row-num">21</span>
+      <div class="row-main">
+        <p class="row-title">Дата рождения — крайние значения списка</p>
+        <p class="row-story">Как пользователь очень молодого или пожилого возраста, я хочу докрутить пикер до своего года рождения без сбоев, чтобы не застрять на этом шаге.</p>
+        <p class="row-criteria"><b>Приёмка:</b> прокрутка до самого раннего/позднего значения — пикер не залипает, значение фиксируется корректно.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-22">
+      <span class="row-num">22</span>
+      <div class="row-main">
+        <p class="row-title">Дата рождения — реалистичность возраста</p>
+        <p class="row-story">Как продукт, я хочу отсеивать явно нереалистичные значения возраста, чтобы не строить план на заведомо некорректных данных.</p>
+        <p class="row-criteria"><b>Приёмка:</b> при возрасте 5 или 120 лет — разумное ограничение диапазона либо явное предупреждение.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-23">
+      <span class="row-num">23</span>
+      <div class="row-main">
+        <p class="row-title">Рост/вес — крайние значения</p>
+        <p class="row-story">Как пользователь с ростом/весом на границе диапазона, я хочу корректно выставить своё значение, чтобы план учитывал реальные данные.</p>
+        <p class="row-criteria"><b>Приёмка:</b> минимум/максимум диапазона не ломают вёрстку и дальнейшие расчёты плана.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-24">
+      <span class="row-num">24</span>
+      <div class="row-main">
+        <p class="row-title">Чекбокс согласия блокирует Continue</p>
+        <p class="row-story">Как продукт, обрабатывающий данные о здоровье, я хочу получить явное согласие пользователя до продолжения, чтобы соответствовать требованиям к обработке чувствительных данных.</p>
+        <p class="row-criteria"><b>Приёмка:</b> Continue неактивна, пока чекбокс согласия не отмечен; чекбокс должен быть кликабелен обычным кликом.</p>
+        <p class="row-comment">Логика согласия работает (Continue активируется после отметки), но сам контрол физически перекрыт фиксированной панелью — обычный клик в него не долетает.</p>
+      </div>
+      <span class="chip p0">P0</span>
+      <a class="stat-pill failed" href="#F-1">Failed → F-1</a>
+    </div>
+
+    <div class="row" id="S-25">
+      <span class="row-num">25</span>
+      <div class="row-main">
+        <p class="row-title">Целевой вес (goal weight picker)</p>
+        <p class="row-story">Как пользователь с целью «Lose weight», я хочу задать желаемый вес ниже текущего, чтобы план считал именно похудение, а не поддержание.</p>
+        <p class="row-criteria"><b>Приёмка:</b> выбор значения на пикере целевого веса активирует Continue.</p>
+        <p class="row-comment">Пикер визуально меняет значение и даже правильно пересчитывает BMI/бейдж «Lose weight» — но Continue остаётся disabled при клике по строке.</p>
+      </div>
+      <span class="chip p0">P0</span>
+      <a class="stat-pill failed" href="#F-7">Failed → F-7</a>
+    </div>
+
+    <div class="row" id="S-26">
+      <span class="row-num">26</span>
+      <div class="row-main">
+        <p class="row-title">Ссылка Privacy Policy рабочая</p>
+        <p class="row-story">Как пользователь, дающий согласие на обработку данных о здоровье, я хочу прочитать реальную политику конфиденциальности, чтобы понимать, на что соглашаюсь.</p>
+        <p class="row-criteria"><b>Приёмка:</b> клик открывает реальный документ, не 404 и не пустую страницу.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+  </div>
+  <div class="group">
+    <div class="category-head">Визуальная и адаптивная вёрстка</div>
+
+    <div class="row" id="S-27">
+      <span class="row-num">27</span>
+      <div class="row-main">
+        <p class="row-title">Desktop-разрешения (1440×900 и шире)</p>
+        <p class="row-story">Как пользователь, открывший сайт с ноутбука или монитора, я хочу видеть аккуратно скомпонованный экран, а не растянутую мобильную вёрстку с пустотами и наложениями.</p>
+        <p class="row-criteria"><b>Приёмка:</b> на 1440×900 и 1920×1080 контент центрирован, без гигантских пустот, кнопки не перекрывают контент.</p>
+        <p class="row-comment">См. также F-2 (пустые области).</p>
+      </div>
+      <span class="chip p0">P0</span>
+      <a class="stat-pill failed" href="#F-1">Failed → F-1</a>
+    </div>
+
+    <div class="row" id="S-28">
+      <span class="row-num">28</span>
+      <div class="row-main">
+        <p class="row-title">Планшетное разрешение (768×1024)</p>
+        <p class="row-story">Как пользователь iPad, я хочу пройти квиз на экране, который не мобильный и не десктопный, чтобы вёрстка не «сломалась посередине».</p>
+        <p class="row-criteria"><b>Приёмка:</b> корректная адаптация между мобильным и десктопным layout на 768×1024.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-29">
+      <span class="row-num">29</span>
+      <div class="row-main">
+        <p class="row-title">Мобильное разрешение (375×667, 390×844)</p>
+        <p class="row-story">Как пользователь смартфона (вероятно, основная аудитория продукта), я хочу пройти квиз в удобном для пальца layout без обрезанных кнопок и пустых зон.</p>
+        <p class="row-criteria"><b>Приёмка:</b> корректный layout на реальном мобильном viewport (проверено: iPhone 13, 390×844).</p>
+        <p class="row-comment">Подтверждает гипотезу из первой версии отчёта: на мобильном вёрстка именно такая, для которой и проектировалась. CONTINUE корректно прилипает к низу, нет наложений в видимой области, нет горизонтального overflow — те же экраны (лендинг → пол → цель → health → about_you), что дают F-1/F-2 на десктопе, здесь чисты.</p>
+      </div>
+      <span class="chip p0">P0</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-30">
+      <span class="row-num">30</span>
+      <div class="row-main">
+        <p class="row-title">Альбомная ориентация</p>
+        <p class="row-story">Как пользователь, случайно повернувший телефон боком, я хочу продолжить пользоваться квизом без сломанного экрана.</p>
+        <p class="row-criteria"><b>Приёмка:</b> в landscape layout не ломается, контент доступен без лишнего скролла.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-31">
+      <span class="row-num">31</span>
+      <div class="row-main">
+        <p class="row-title">Отсутствие горизонтального скролла</p>
+        <p class="row-story">Как пользователь, я хочу не видеть случайный горизонтальный скролл на экране квиза, чтобы интерфейс не выглядел сломанным.</p>
+        <p class="row-criteria"><b>Приёмка:</b> ширина документа не превышает ширину viewport ни на одном экране.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-32">
+      <span class="row-num">32</span>
+      <div class="row-main">
+        <p class="row-title">Интерактивные элементы не перекрываются</p>
+        <p class="row-story">Как пользователь, я хочу нажимать именно на тот вариант, на который смотрю, а не на кнопку, которая случайно оказалась сверху.</p>
+        <p class="row-criteria"><b>Приёмка:</b> ни один интерактивный элемент не закрыт другим более чем на несколько % площади.</p>
+      </div>
+      <span class="chip p0">P0</span>
+      <a class="stat-pill failed" href="#F-1">Failed → F-1</a>
+    </div>
+
+    <div class="row" id="S-33">
+      <span class="row-num">33</span>
+      <div class="row-main">
+        <p class="row-title">Контраст текста на фоновых изображениях</p>
+        <p class="row-story">Как пользователь со слабым зрением или на ярком солнце, я хочу читать заголовки поверх фото без напряжения глаз.</p>
+        <p class="row-criteria"><b>Приёмка:</b> соотношение контраста ≥ 4.5:1 (WCAG AA) на любом участке фона.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <a class="stat-pill failed" href="#F-3">Failed → F-3</a>
+    </div>
+
+    <div class="row" id="S-34">
+      <span class="row-num">34</span>
+      <div class="row-main">
+        <p class="row-title">Состояния hover / focus / active</p>
+        <p class="row-story">Как пользователь с мышью или клавиатурой, я хочу видеть, с каким элементом сейчас взаимодействую, чтобы не гадать, сработал ли клик.</p>
+        <p class="row-criteria"><b>Приёмка:</b> видимая обратная связь на hover, focus и active для каждого интерактивного элемента.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-35">
+      <span class="row-num">35</span>
+      <div class="row-main">
+        <p class="row-title">Поведение на медленной сети</p>
+        <p class="row-story">Как пользователь с плохим мобильным интернетом, я хочу видеть индикатор загрузки, а не «прыгающий» пустой экран, чтобы понимать, что сайт работает.</p>
+        <p class="row-criteria"><b>Приёмка:</b> на throttling 3G есть скелетоны/лоадеры, layout не смещается по мере догрузки.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+  </div>
+  <div class="group">
+    <div class="category-head">Технические и служебные проверки</div>
+
+    <div class="row" id="S-36">
+      <span class="row-num">36</span>
+      <div class="row-main">
+        <p class="row-title">Console errors</p>
+        <p class="row-story">Как инженер, поддерживающий сайт, я хочу знать о JS-ошибках до того, как о них сообщат пользователи.</p>
+        <p class="row-criteria"><b>Приёмка:</b> ноль ошибок уровня error в консоли на любом экране.</p>
+        <p class="row-comment">0 найдено на 16 пройденных экранах.</p>
+      </div>
+      <span class="chip p0">P0</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-37">
+      <span class="row-num">37</span>
+      <div class="row-main">
+        <p class="row-title">HTTP-ошибки собственного бэкенда</p>
+        <p class="row-story">Как пользователь, я хочу, чтобы все запросы к серверу gFit отрабатывали успешно, чтобы квиз не обрывался на середине.</p>
+        <p class="row-criteria"><b>Приёмка:</b> ни одного 4xx/5xx-ответа от <code>app.gfit.world</code>.</p>
+        <p class="row-comment">0 найдено.</p>
+      </div>
+      <span class="chip p0">P0</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-38">
+      <span class="row-num">38</span>
+      <div class="row-main">
+        <p class="row-title">Целостность изображений</p>
+        <p class="row-story">Как пользователь, я хочу видеть реальные фото и иллюстрации, а не «битые картинки», чтобы доверять качеству продукта.</p>
+        <p class="row-criteria"><b>Приёмка:</b> <code>naturalWidth/Height</code> после полной загрузки — ни одного 0×0 / decode failure.</p>
+        <p class="row-comment">0 найдено, после исправления методики (ожидание decode).</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-39">
+      <span class="row-num">39</span>
+      <div class="row-main">
+        <p class="row-title">Время перехода между шагами</p>
+        <p class="row-story">Как пользователь, я хочу, чтобы переход между шагами квиза был мгновенным, чтобы не терять терпение и не бросить прохождение.</p>
+        <p class="row-criteria"><b>Приёмка:</b> время от клика Continue до готовности следующего экрана ≤ 1с.</p>
+        <p class="row-comment">Next.js App Router — client-side переходы не дают отдельного navigation-timing entry.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-40">
+      <span class="row-num">40</span>
+      <div class="row-main">
+        <p class="row-title">SEO / мета-теги</p>
+        <p class="row-story">Как маркетолог, я хочу, чтобы ссылка на лендинг красиво разворачивалась в соцсетях и мессенджерах, чтобы это увеличивало кликабельность.</p>
+        <p class="row-criteria"><b>Приёмка:</b> title/description/OG-теги заполнены осмысленно.</p>
+      </div>
+      <span class="chip p3">P3</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-41">
+      <span class="row-num">41</span>
+      <div class="row-main">
+        <p class="row-title">Поведение при отключённом JS</p>
+        <p class="row-story">Как пользователь с отключённым JS (корпоративная политика, экономия трафика), я хочу увидеть хоть какое-то объяснение вместо белого экрана.</p>
+        <p class="row-criteria"><b>Приёмка:</b> информативный fallback вместо пустой страницы.</p>
+      </div>
+      <span class="chip p3">P3</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-42">
+      <span class="row-num">42</span>
+      <div class="row-main">
+        <p class="row-title">Сохранение состояния между вкладками</p>
+        <p class="row-story">Как пользователь, случайно открывший сайт в новой вкладке, я хочу понятного поведения — не запутаться, какой прогресс актуален.</p>
+        <p class="row-criteria"><b>Приёмка:</b> либо синхронизация состояния, либо явный новый старт — не путаница.</p>
+      </div>
+      <span class="chip p3">P3</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+  </div>
+  <div class="group">
+    <div class="category-head">Доступность (a11y)</div>
+
+    <div class="row" id="S-43">
+      <span class="row-num">43</span>
+      <div class="row-main">
+        <p class="row-title">Полное прохождение только с клавиатуры</p>
+        <p class="row-story">Как пользователь, не использующий мышь (моторные ограничения или личное предпочтение), я хочу пройти весь квиз клавиатурой, чтобы получить план наравне со всеми.</p>
+        <p class="row-criteria"><b>Приёмка:</b> каждый шаг достижим и завершаем через Tab/Enter/Space.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-44">
+      <span class="row-num">44</span>
+      <div class="row-main">
+        <p class="row-title">Видимый focus outline</p>
+        <p class="row-story">Как пользователь клавиатуры, я хочу видеть, на каком элементе я сейчас нахожусь, чтобы не нажать не туда.</p>
+        <p class="row-criteria"><b>Приёмка:</b> чёткая визуальная индикация фокуса на каждом интерактивном элементе.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-45">
+      <span class="row-num">45</span>
+      <div class="row-main">
+        <p class="row-title">ARIA-роли на кастомных компонентах</p>
+        <p class="row-story">Как пользователь screen reader, я хочу, чтобы кастомный чекбокс согласия и пикеры озвучивались как чекбокс и пикер, а не как безымянный блок.</p>
+        <p class="row-criteria"><b>Приёмка:</b> корректные ARIA-роли/labels, не голые <code>div</code>.</p>
+        <p class="row-comment">Проверено попутно при поиске способа активировать согласие: элемент — это <code>&lt;button aria-label="Consent to health data processing"&gt;</code>, роль корректна, но у него нет <code>aria-pressed</code>/<code>aria-checked</code> — screen reader не объявит текущее состояние (отмечено/нет).</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <a class="stat-pill failed" href="#F-8">Failed → F-8</a>
+    </div>
+
+    <div class="row" id="S-46">
+      <span class="row-num">46</span>
+      <div class="row-main">
+        <p class="row-title">Проверка screen reader</p>
+        <p class="row-story">Как незрячий пользователь, я хочу пройти квиз с VoiceOver/NVDA так же полно, как зрячий пользователь глазами.</p>
+        <p class="row-criteria"><b>Приёмка:</b> все ключевые экраны озвучиваются осмысленно, ничего не пропущено.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-47">
+      <span class="row-num">47</span>
+      <div class="row-main">
+        <p class="row-title">Автоматический a11y-скан</p>
+        <p class="row-story">Как QA-инженер, я хочу автоматически ловить регрессии доступности в CI, чтобы не полагаться только на ручные проверки.</p>
+        <p class="row-criteria"><b>Приёмка:</b> axe-core / Lighthouse на каждом экране — ноль критичных нарушений.</p>
+        <p class="row-comment">Самый быстрый способ закрыть весь блок доступности разом.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+  </div>
+  <div class="group">
+    <div class="category-head">Кроссбраузерность</div>
+
+    <div class="row" id="S-48">
+      <span class="row-num">48</span>
+      <div class="row-main">
+        <p class="row-title">Chromium / Chrome</p>
+        <p class="row-story">Как пользователь самого популярного браузера, я хочу, чтобы сайт работал безупречно именно в нём.</p>
+        <p class="row-criteria"><b>Приёмка:</b> базовый эталонный движок для этого аудита — все находки относятся именно к Chromium.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill passed">Passed</span>
+    </div>
+
+    <div class="row" id="S-49">
+      <span class="row-num">49</span>
+      <div class="row-main">
+        <p class="row-title">Firefox</p>
+        <p class="row-story">Как пользователь Firefox, я хочу получить тот же опыт, что и пользователи Chrome, чтобы выбор браузера не был компромиссом.</p>
+        <p class="row-criteria"><b>Приёмка:</b> идентичное поведение и вёрстка на всей воронке.</p>
+      </div>
+      <span class="chip p2">P2</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+
+    <div class="row" id="S-50">
+      <span class="row-num">50</span>
+      <div class="row-main">
+        <p class="row-title">WebKit / Safari</p>
+        <p class="row-story">Как пользователь iPhone (вероятно, основная аудитория продукта), я хочу пройти квиз в Safari без сюрпризов.</p>
+        <p class="row-criteria"><b>Приёмка:</b> идентичное поведение и вёрстка в Safari desktop и iOS Safari.</p>
+      </div>
+      <span class="chip p1">P1</span>
+      <span class="stat-pill skipped">Skipped</span>
+    </div>
+  </div>
+
+  <!-- ================= FINDINGS ================= -->
+  <h2 class="group-title">Найденные дефекты <span class="count">со ссылками на сценарии, где встречаются</span></h2>
+
+  
+  <div class="finding p0" id="F-1">
+    <div class="fhead">
+      <span class="chip p0">P0 · критично</span>
+      <span class="fid">F-1</span>
+      <p class="ftitle">CONTINUE перекрывает контент на десктопе — повторяется на 3+ экранах</p>
+    </div>
+    <div class="fbody">
+      <p><b class="lbl">Где:</b> <code>/start_quiz/your_goal</code> (дважды), <code>/start_quiz/about_you</code> (в обоих режимах единиц), подтверждено также программно на чекбоксе согласия.</p><p><b class="lbl">Что происходит:</b> Кнопка отрендерена «в потоке» разметки вместо прилипания к низу экрана. На экране цели физически ложится на пункт <b>«Build a workout habit»</b> — перекрытие 83% площади. На экране биометрии перекрывает пикер <b>«Current Weight»</b> и чекбокс согласия — подтверждено программно: Playwright сообщил <code>«fixed inset-x-0 bottom-safe… intercepts pointer events»</code> при попытке клика по чекбоксу.</p><p><b class="lbl">Почему это важно:</b> Пункты списка физически невозможно выбрать мышью — под кнопкой скрыт их чекбокс. Функциональная блокировка, не косметика. Обойдена только программным диспатчем pointer-событий в обход hit-теста — обычный пользователь такой возможности не имеет.</p><p><b class="lbl">Причина:</b> Вёрстка явно проектировалась под мобильный экран, где контент всегда короче высоты вьюпорта.</p><p><b class="lbl">Исправление:</b> <code>position: sticky/fixed</code> для кнопки с собственным непрозрачным фоном и z-index выше контента, либо ограничение высоты списка опций отдельным скроллируемым контейнером, не залезающим под кнопку.</p><p style="color:var(--accent)"><b class="lbl" style="color:var(--accent)">Уточнение:</b> Проверено на мобильном viewport (iPhone 13, 390×844, см. сценарий 29): здесь баг НЕ воспроизводится — CONTINUE корректно прилипает к низу и не перекрывает опции. Подтверждает диагноз: вёрстка рассчитана на мобильный и ломается именно при растягивании на десктоп.</p><p><b class="lbl">Встречается в сценариях:</b> <a href="#S-24">#24</a>, <a href="#S-27">#27</a>, <a href="#S-29">#29</a>, <a href="#S-32">#32</a></p>
+      <div class="shots"><figure><img src="08-your-goal-empty.png" alt="CONTINUE перекрывает контент на десктопе — повторяется на 3+ экранах"><figcaption>08-your-goal-empty.png</figcaption></figure><figure><img src="10-your-health-interstitial.png" alt="CONTINUE перекрывает контент на десктопе — повторяется на 3+ экранах"><figcaption>10-your-health-interstitial.png</figcaption></figure><figure><img src="12-about-you-imperial-units.png" alt="CONTINUE перекрывает контент на десктопе — повторяется на 3+ экранах"><figcaption>12-about-you-imperial-units.png</figcaption></figure></div>
+    </div>
+  </div>
+
+  <div class="finding p1" id="F-2">
+    <div class="fhead">
+      <span class="chip p1">P1 · серьёзно</span>
+      <span class="fid">F-2</span>
+      <p class="ftitle">Огромные пустые области на десктопе между заголовком и кнопкой</p>
+    </div>
+    <div class="fbody">
+      <p><b class="lbl">Где:</b> экраны ввода имени, приветствия, выбора пола — контент занимает верхние ~25% экрана, кнопка в самом низу.</p><p><b class="lbl">Причина:</b> Та же причина, что F-1 — мобильная вёрстка, растянутая на широкий вьюпорт.</p><p><b class="lbl">Исправление:</b> Desktop-специфичный layout с вертикальным центрированием карточки квиза в компактном контейнере.</p><p><b class="lbl">Встречается в сценариях:</b> <a href="#S-27">#27</a></p>
+      <div class="shots"><figure><img src="04-name-input-filled.png" alt="Огромные пустые области на десктопе между заголовком и кнопкой"><figcaption>04-name-input-filled.png</figcaption></figure><figure><img src="06-gender-empty.png" alt="Огромные пустые области на десктопе между заголовком и кнопкой"><figcaption>06-gender-empty.png</figcaption></figure><figure><img src="07-gender-selected.png" alt="Огромные пустые области на десктопе между заголовком и кнопкой"><figcaption>07-gender-selected.png</figcaption></figure></div>
+    </div>
+  </div>
+
+  <div class="finding p1" id="F-3">
+    <div class="fhead">
+      <span class="chip p1">P1 · серьёзно</span>
+      <span class="fid">F-3</span>
+      <p class="ftitle">Низкий контраст заголовка на фоне фотографии на лендинге</p>
+    </div>
+    <div class="fbody">
+      <p><b class="lbl">Где:</b> <code>/</code> — главный экран.</p><p><b class="lbl">Что происходит:</b> «Welcome to gFit» наложен на фото без подложки/тени — в светлых зонах фото буквы почти сливаются с фоном.</p><p><b class="lbl">Исправление:</b> Полупрозрачная подложка под текст или градиент-затемнение снизу фото.</p><p><b class="lbl">Встречается в сценариях:</b> <a href="#S-33">#33</a></p>
+      <div class="shots"><figure><img src="01-landing.png" alt="Низкий контраст заголовка на фоне фотографии на лендинге"><figcaption>01-landing.png</figcaption></figure></div>
+    </div>
+  </div>
+
+  <div class="finding p2" id="F-4">
+    <div class="fhead">
+      <span class="chip p2">P2 · незначительно</span>
+      <span class="fid">F-4</span>
+      <p class="ftitle">«Privacy Policy.» — тап-таргет меньше рекомендованного минимума</p>
+    </div>
+    <div class="fbody">
+      <p><b class="lbl">Где:</b> экран биометрии, строка согласия.</p><p><b class="lbl">Что происходит:</b> Область ссылки ~78×14px — заметно меньше рекомендованных 32×32px на юридически значимом экране согласия.</p><p><b class="lbl">Исправление:</b> Увеличить кликабельный padding вокруг ссылки.</p><p><b class="lbl">Встречается в сценариях:</b> <a href="#S-26">#26</a></p>
+      <div class="shots"><figure><img src="11-about-you-biometrics.png" alt="«Privacy Policy.» — тап-таргет меньше рекомендованного минимума"><figcaption>11-about-you-biometrics.png</figcaption></figure></div>
+    </div>
+  </div>
+
+  <div class="finding p2" id="F-5">
+    <div class="fhead">
+      <span class="chip p2">P2 · незначительно</span>
+      <span class="fid">F-5</span>
+      <p class="ftitle">Иконка «запрещающего знака» у позитивного варианта ответа</p>
+    </div>
+    <div class="fbody">
+      <p><b class="lbl">Где:</b> <code>/start_step</code>, вариант «No, let's create a fitness plan».</p><p><b class="lbl">Что происходит:</b> Иконка круга с диагональной чертой (символ «запрещено») стоит у позитивного действия — семантически сбивает с толку.</p><p><b class="lbl">Исправление:</b> Заменить на нейтральную иконку (плюс, звезда, новый документ).</p><p><b class="lbl">Встречается в сценариях:</b> <a href="#S-7">#7</a></p>
+      <div class="shots"><figure><img src="02-start-step-fork.png" alt="Иконка «запрещающего знака» у позитивного варианта ответа"><figcaption>02-start-step-fork.png</figcaption></figure></div>
+    </div>
+  </div>
+
+  <div class="finding p2" id="F-6">
+    <div class="fhead">
+      <span class="chip p2">P2 · незначительно</span>
+      <span class="fid">F-6</span>
+      <p class="ftitle">Немаркированная статистика «9/10 users see real results»</p>
+    </div>
+    <div class="fbody">
+      <p><b class="lbl">Где:</b> экран приветствия.</p><p><b class="lbl">Что происходит:</b> Крупная маркетинговая цифра без сноски, методологии или источника.</p><p><b class="lbl">Исправление:</b> Добавить мелкую сноску-дисклеймер или убрать конкретную цифру.</p>
+      <div class="shots"><figure><img src="06-gender-empty.png" alt="Немаркированная статистика «9/10 users see real results»"><figcaption>06-gender-empty.png</figcaption></figure></div>
+    </div>
+  </div>
+
+  <div class="finding p0" id="F-7">
+    <div class="fhead">
+      <span class="chip p0">P0 · критично</span>
+      <span class="fid">F-7</span>
+      <p class="ftitle">Пикер целевого веса не активирует CONTINUE ни одним из проверенных способов ввода</p>
+    </div>
+    <div class="fbody">
+      <p><b class="lbl">Где:</b> <code>/start_quiz/weight_goal</code> — «What's your goal weight?».</p><p><b class="lbl">Что происходит:</b> Клик по конкретной строке пикера визуально меняет значение (113.4 → 100.4 KG) и корректно пересчитывает BMI/бейдж «Lose weight» — то есть внутреннее состояние страницы явно знает новое значение. Но кнопка CONTINUE остаётся <code>disabled</code> после ВСЕХ пяти проверенных способов: обычного клика по строке, синтетического <code>wheel</code>-события, полноценного эмулированного mouse-drag (down → move → up), <code>page.touchscreen.tap()</code>, и низкоуровневого CDP <code>Input.dispatchTouchEvent</code> с 10-шаговым touch-drag (start → 10× move → end) — та же последовательность событий, которую физически шлёт браузер при реальном пальцевом свайпе.</p><p><b class="lbl">Почему это важно:</b> Это блокирует прохождение воронки дальше этого шага для любого автоматизированного клиента. Поскольку даже низкоуровневая CDP-эмуляция реального тача не сработала (не просто «Playwright не умеет», а «браузер получил настоящие touch-события и всё равно не отреагировал»), вероятность того, что это реальный баг компонента (а не ограничение эмуляции) заметно выросла.</p><p><b class="lbl">Причина:</b> Компонент пикера, вероятно, требует событие типа <code>scrollend</code>/<code>touchend</code> с конкретными таймингами инерционного скролла (momentum), которое не воспроизводится ни одним из пяти испробованных методов — более узкое требование, чем у пикеров даты рождения/роста/веса на предыдущем экране, где начальные значения принимались без явного взаимодействия.</p><p><b class="lbl">Исправление:</b> Нужна ручная проверка на реальном устройстве (палец на телефоне или трекпад на Mac) — является ли это реальным багом сайта. Если да — это самый серьёзный найденный дефект: он обрывает воронку полностью, до финального экрана/пейвола, и не только для автоматизации.</p><p><b class="lbl">Встречается в сценариях:</b> <a href="#S-1">#1</a>, <a href="#S-25">#25</a></p>
+      <div class="shots"><figure><img src="17-weight-goal-unblock-attempt.png" alt="Пикер целевого веса не активирует CONTINUE ни одним из проверенных способов ввода"><figcaption>17-weight-goal-unblock-attempt.png</figcaption></figure></div>
+    </div>
+  </div>
+
+  <div class="finding p1" id="F-8">
+    <div class="fhead">
+      <span class="chip p1">P1 · серьёзно</span>
+      <span class="fid">F-8</span>
+      <p class="ftitle">Чекбокс согласия — отсутствует ARIA-состояние (не пресс-кнопка)</p>
+    </div>
+    <div class="fbody">
+      <p><b class="lbl">Где:</b> <code>/start_quiz/about_you</code> — чекбокс согласия на обработку данных.</p><p><b class="lbl">Что происходит:</b> Элемент — <code>&lt;button aria-label="Consent to health data processing"&gt;</code>. Роль и label заданы корректно, но нет <code>aria-pressed</code> или <code>aria-checked</code>, отражающего текущее состояние (отмечено/не отмечено).</p><p><b class="lbl">Почему это важно:</b> Пользователь screen reader слышит название контрола, но не может узнать, отмечено ли уже согласие, не проверяя это иным способом.</p><p><b class="lbl">Исправление:</b> Добавить <code>aria-checked="true/false"</code> (если это концептуально чекбокс — тогда лучше <code>role="checkbox"</code> вместо <code>role="button"</code>) или <code>aria-pressed</code>.</p><p><b class="lbl">Встречается в сценариях:</b> <a href="#S-45">#45</a></p>
+      <div class="shots"><figure><img src="13-about-you-consent-checked.png" alt="Чекбокс согласия — отсутствует ARIA-состояние (не пресс-кнопка)"><figcaption>13-about-you-consent-checked.png</figcaption></figure></div>
+    </div>
+  </div>
+
+  <!-- ================= METRICS ================= -->
+  <h2 class="group-title">Метрики производительности и целостности</h2>
+  <div class="group">
+    <div class="row" style="grid-template-columns: 1fr auto;">
+      <div class="row-main"><p class="row-title">Время полной загрузки лендинга (window <code>load</code>)</p><p class="row-usecase" style="font-size:13px;color:var(--text-dim);margin:0">1059 мс — DOMContentLoaded 652 мс, TTFB 303 мс. Разовое измерение, чуть выше условного бюджета в 1000 мс.</p></div>
+      <span class="stat-pill skipped">1059 мс</span>
+    </div>
+    <div class="row" style="grid-template-columns: 1fr auto;">
+      <div class="row-main"><p class="row-title">Console errors за проход (24 экрана: 17 desktop + 7 mobile)</p></div>
+      <span class="stat-pill passed">0</span>
+    </div>
+    <div class="row" style="grid-template-columns: 1fr auto;">
+      <div class="row-main"><p class="row-title">HTTP-ошибки (4xx/5xx) от сайта</p></div>
+      <span class="stat-pill passed">0</span>
+    </div>
+    <div class="row" style="grid-template-columns: 1fr auto;">
+      <div class="row-main"><p class="row-title">Битые изображения (0×0 / decode failure)</p></div>
+      <span class="stat-pill passed">0</span>
+    </div>
+    <div class="row" style="grid-template-columns: 1fr auto;">
+      <div class="row-main"><p class="row-title">Тап-таргеты &lt; 32px</p></div>
+      <a class="stat-pill failed" href="#F-4">1 → F-4</a>
+    </div>
+    <div class="row" style="grid-template-columns: 1fr auto;">
+      <div class="row-main"><p class="row-title">Наложения интерактивных элементов &gt;50%</p></div>
+      <a class="stat-pill failed" href="#F-1">2+ экрана → F-1</a>
+    </div>
+  </div>
+
+  <h2 class="group-title">Что честно исключено из вердикта</h2>
+  <div class="note-box">
+    Скрипт изначально зафиксировал 15 «сетевых ошибок», но все 15 оказались шумом: запросы
+    <code>*.google-analytics.com</code> и <code>*.facebook.net</code> (один заблокирован самой Meta
+    как бот-трафик headless-браузера — ожидаемо для автоматизированного прохода) и Next.js
+    RSC-префетчи (<code>?_rsc=...</code>), обрываемые браузером при переходе на следующий экран —
+    штатное поведение App Router. Ни один не включён в разделы «Находки» или сводку выше.
+  </div>
+
+  <h2 class="group-title">Границы аудита</h2>
+  <div class="note-box">
+    <p style="margin-top:0"><b style="color:var(--text)">Пройдено:</b> онбординг от лендинга до пикера целевого веса (<code>weight_goal</code>), десктоп 1440×900, без аккаунта и оплаты.</p>
+    <p><b style="color:var(--text)">Проверено дополнительно:</b> мобильный viewport (iPhone 13, лендинг → about_you) — F-1 там не воспроизводится; 5 методов ввода на пикере целевого веса — ни один не разблокировал F-7.</p>
+    <p><b style="color:var(--text)">Не оценено (Skipped):</b> форма входа/регистрации; всё после экрана целевого веса; планшетные разрешения; доступность (клавиатура, screen reader полностью); кроссбраузерность за пределами Chromium (Firefox, Safari).</p>
+  </div>
+
+  <!-- ================= SCREENS ================= -->
+  <h2 class="group-title">Скриншоты прохода — desktop <span class="count">17 экранов</span></h2>
+  <div class="screens-grid">
+    <figure><img src="01-landing.png"><figcaption>01 · landing</figcaption></figure>
+    <figure><img src="02-start-step-fork.png"><figcaption>02 · start-step-fork</figcaption></figure>
+    <figure><img src="03-name-input-empty.png"><figcaption>03 · name-input-empty</figcaption></figure>
+    <figure><img src="04-name-input-filled.png"><figcaption>04 · name-input-filled</figcaption></figure>
+    <figure><img src="05-greetings.png"><figcaption>05 · greetings</figcaption></figure>
+    <figure><img src="06-gender-empty.png"><figcaption>06 · gender-empty</figcaption></figure>
+    <figure><img src="07-gender-selected.png"><figcaption>07 · gender-selected</figcaption></figure>
+    <figure><img src="08-your-goal-empty.png"><figcaption>08 · your-goal-empty</figcaption></figure>
+    <figure><img src="09-your-goal-selected.png"><figcaption>09 · your-goal-selected</figcaption></figure>
+    <figure><img src="10-your-health-interstitial.png"><figcaption>10 · your-health</figcaption></figure>
+    <figure><img src="11-about-you-biometrics.png"><figcaption>11 · about-you</figcaption></figure>
+    <figure><img src="12-about-you-imperial-units.png"><figcaption>12 · imperial-units</figcaption></figure>
+    <figure><img src="13-about-you-consent-checked.png"><figcaption>13 · consent-checked</figcaption></figure>
+    <figure><img src="14-after-about-you.png"><figcaption>14 · activity</figcaption></figure>
+    <figure><img src="15-post-about-you-step0.png"><figcaption>15 · weight-goal</figcaption></figure>
+    <figure><img src="16-post-about-you-step1.png"><figcaption>16 · weight-goal (adjusted)</figcaption></figure>
+    <figure><img src="17-weight-goal-unblock-attempt.png"><figcaption>17 · unblock attempt (F-7)</figcaption></figure>
+  </div>
+
+  <h2 class="group-title">Скриншоты прохода — mobile <span class="count">iPhone 13, 390×844</span></h2>
+  <div class="screens-grid">
+    <figure><img src="m01-landing.png"><figcaption>m01 · landing</figcaption></figure>
+    <figure><img src="m02-start-step.png"><figcaption>m02 · start-step</figcaption></figure>
+    <figure><img src="m03-gender.png"><figcaption>m03 · gender</figcaption></figure>
+    <figure><img src="m04-your-goal-empty.png"><figcaption>m04 · your-goal-empty</figcaption></figure>
+    <figure><img src="m05-your-goal-selected.png"><figcaption>m05 · your-goal-selected (F-1 не воспроизводится)</figcaption></figure>
+    <figure><img src="m06-your-health.png"><figcaption>m06 · your-health</figcaption></figure>
+    <figure><img src="m07-about-you.png"><figcaption>m07 · about-you</figcaption></figure>
+  </div>
+
+  <footer>
+    Отчёт сгенерирован из headless Chromium (Playwright) прогонов. Скрипты-краулеры не сохранены в
+    репозитории — одноразовые запуски из scratch-директории. Внутренний рабочий документ, не
+    закоммичен в git.
+  </footer>
+
+</div>
+</body>
+</html>
