@@ -1,9 +1,14 @@
 // Shared Gemini-text-call helper: any module that needs a plain string/verdict back (not an
 // agentic file edit — that's cli-fallback.ts) uses this instead of calling the REST API directly.
 // This calls the Generative Language API directly, the same API healwright itself calls under the
-// hood, reusing the same AI_API_KEY/AI_MODEL_FALLBACK pair fixtures.ts already establishes for
-// exactly this quota-exhaustion scenario. (Free-tier quotas are tracked per model, so a second
-// model has its own untouched daily allowance.)
+// hood, reusing the same AI_API_KEY/AI_MODEL_FALLBACK pair fixtures.ts already establishes.
+//
+// isRetryableAiError() below covers two distinct failure shapes, and the fallback model helps with
+// only one of them: a 429/RESOURCE_EXHAUSTED quota error is genuinely per-model (a second model has
+// its own untouched daily allowance), so retrying on the fallback is a real fix. A 503/UNAVAILABLE
+// ("experiencing high demand") is transient shared-capacity trouble, not a quota — a sibling model
+// may sit behind the same overloaded backend, so retrying it here is a best-effort attempt, not a
+// guarantee the way the 429 path is.
 //
 // Model resolution is per-call, not module-level: jira-triage and qa-analyst want AI_MODEL (the
 // same tier that does everything else); reviewer-tests explicitly needs a DIFFERENT tier from
@@ -18,17 +23,19 @@
 // metrics call is needed; unlike the Claude CLI it reports no dollar figure, so costUsd is left
 // undefined here too, consistent with how cli-fallback.ts treats Gemini usage.
 
-import {recordAiUsage} from './usage-log';
+import { recordAiUsage } from './usage-log';
 
 const DEFAULT_MODEL = process.env.AI_MODEL ?? 'gemini-3.6-flash';
 const DEFAULT_FALLBACK_MODEL = process.env.AI_MODEL_FALLBACK;
 
-function isQuotaExhausted(message: string): boolean {
-  return message.includes('RESOURCE_EXHAUSTED')
-    || message.includes('"code":429')
-    || message.includes('"code":503')
-    || message.includes(' 503')
-    || message.includes(' 429');
+function isRetryableAiError(message: string): boolean {
+  return (
+    message.includes('RESOURCE_EXHAUSTED') ||
+    message.includes('"code":429') ||
+    message.includes('"code":503') ||
+    message.includes(' 503') ||
+    message.includes(' 429')
+  );
 }
 
 async function callGeminiOnce(model: string, prompt: string, caller: string, tierIndex: number): Promise<string> {
@@ -40,8 +47,8 @@ async function callGeminiOnce(model: string, prompt: string, caller: string, tie
   const startedAt = Date.now();
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({contents: [{parts: [{text: prompt}]}]}),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
   });
 
   if (!res.ok) {
@@ -53,7 +60,7 @@ async function callGeminiOnce(model: string, prompt: string, caller: string, tie
       tierIndex,
       outcome: 'failure',
       durationMs: Date.now() - startedAt,
-      failureReason
+      failureReason,
     });
     throw new Error(`${failureReason}: ${await res.text()}`);
   }
@@ -84,7 +91,7 @@ export interface ModelPair {
   logTag?: string;
 }
 
-const DEFAULT_PAIR: ModelPair = {primary: DEFAULT_MODEL, fallback: DEFAULT_FALLBACK_MODEL, logTag: '[ai-agents]'};
+const DEFAULT_PAIR: ModelPair = { primary: DEFAULT_MODEL, fallback: DEFAULT_FALLBACK_MODEL, logTag: '[ai-agents]' };
 
 // caller attribution for recordAiUsage reuses logTag rather than adding a new field — every
 // existing ModelPair already sets one (e.g. '[jira-triage]'), it's already per-caller, and
@@ -100,9 +107,9 @@ export async function callGemini(prompt: string, models: ModelPair = DEFAULT_PAI
     return await callGeminiOnce(models.primary, prompt, caller, 0);
   } catch (err) {
     const message = (err as Error).message;
-    if (!models.fallback || !isQuotaExhausted(message)) throw err;
+    if (!models.fallback || !isRetryableAiError(message)) throw err;
     process.stderr.write(
-      `${models.logTag ?? '[ai-agents]'} ${models.primary} quota exhausted — retrying with fallback model ${models.fallback}\n`,
+      `${models.logTag ?? '[ai-agents]'} ${models.primary} failed (quota or transient unavailability) — retrying with fallback model ${models.fallback}\n`,
     );
     return callGeminiOnce(models.fallback, prompt, caller, 1);
   }
