@@ -38,19 +38,19 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.5.1",
     "allure-commandline": "^2.34.0",
     "allure-js-commons": "^3.12.0",
     "allure-playwright": "^3.12.0",
     "c8": "^12.0.0",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^17.5.1",
     "prettier": "^3.9.6",
     "tsx": "^4.23.13",
     "typescript": "^5.6.0",
-    "typescript-eslint": "^8.69.0"
+    "typescript-eslint": "^8.70.0"
   },
   "dependencies": {
     "@faker-js/faker": "^10.6.0",
