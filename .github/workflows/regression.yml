@@ -85,9 +85,26 @@ jobs:
       # describe alone. The blob reporter needed to merge shards below comes from
       # playwright.config.ts (CI-gated), not a CLI flag here, precisely because test:affected
       # can't be handed one.
+      #
+      # Dependabot PRs are routed to unit-only: GitHub gives Dependabot-triggered runs a separate,
+      # normally-empty secret store (Settings > Secrets > Dependabot, not Actions) — USER_PASSWORD/
+      # BOOK_STORE_* resolve to '' there regardless of what's set under Actions. Every Dependabot
+      # diff also touches package-lock.json, one of test:affected's own FALLBACK_TRIGGERS
+      # (src/test-selection/affected-tests.ts), so it would otherwise always resolve to a full,
+      # unscoped `playwright test` run — putting `api` in globalSetup's scope and failing on the
+      # missing credential before a single test executes, not on anything the dependency bump
+      # actually changed. unit/lint/typecheck/format (this job, shard 1) still run in full and are
+      # what carries real signal for a dependency bump; api/graphql/ui exercise external services
+      # (restful-booker, demoqa, Hygraph), not the bumped package, with one known exception — a
+      # @playwright/test bump is exactly the case where the ui project would have signal that this
+      # skips. Fixing the Dependabot secret store (mirroring the 3 secrets there) would remove this
+      # carve-out entirely; until then this keeps Dependabot PRs green on the parts credentials
+      # can't gate rather than red on missing infrastructure.
       - name: Run tests
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
+            npm run test:unit
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
             npm run test:affected
           else
             npm test -- --shard=${{ matrix.shard }}/${{ matrix.shard-count }}
