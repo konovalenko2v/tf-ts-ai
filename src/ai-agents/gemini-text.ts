@@ -2,8 +2,8 @@
 // agentic file edit — that's cli-fallback.ts) uses this instead of calling the REST API directly.
 // This calls the Generative Language API directly, the same API healwright itself calls under the
 // hood, reusing the same AI_API_KEY/AI_MODEL_FALLBACK pair fixtures.ts already establishes for
-// exactly this quota-exhaustion scenario (free-tier quotas are tracked per model, so a second
-// model has its own untouched daily allowance).
+// exactly this quota-exhaustion scenario. (Free-tier quotas are tracked per model, so a second
+// model has its own untouched daily allowance.)
 //
 // Model resolution is per-call, not module-level: jira-triage and qa-analyst want AI_MODEL (the
 // same tier that does everything else); reviewer-tests explicitly needs a DIFFERENT tier from
@@ -14,7 +14,7 @@
 // recordAiUsage() here (caller: 'gemini-text') is a second AI-usage-log writer alongside
 // cli-fallback.ts's — this was the other call site the cost tracker couldn't see (see
 // usage-log.ts's header). The Generative Language API's generateContent response carries
-// usageMetadata directly, same as the Claude/Gemini CLI json result lines do, so no separate
+// usageMetadata directly, same as the Claude/Gemini CLI JSON result lines do, so no separate
 // metrics call is needed; unlike the Claude CLI it reports no dollar figure, so costUsd is left
 // undefined here too, consistent with how cli-fallback.ts treats Gemini usage.
 

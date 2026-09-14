@@ -30,8 +30,8 @@ jobs:
       # shard: [1, 2, 3, 4], shard-count: [4]. This is a cartesian product (matrix), not a paired
       # zip — editing only `shard` runs the full suite N times over instead of splitting it.
       matrix:
-        shard: [1]
-        shard-count: [1]
+        shard: [1, 2]
+        shard-count: [2]
     steps:
       # fetch-depth: 0 — test:affected diffs the PR branch against origin/<base>, which needs
       # the base branch's history present locally; the default shallow (depth-1) checkout only
