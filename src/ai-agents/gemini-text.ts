@@ -18,13 +18,17 @@
 // metrics call is needed; unlike the Claude CLI it reports no dollar figure, so costUsd is left
 // undefined here too, consistent with how cli-fallback.ts treats Gemini usage.
 
-import { recordAiUsage } from './usage-log';
+import {recordAiUsage} from './usage-log';
 
 const DEFAULT_MODEL = process.env.AI_MODEL ?? 'gemini-3.6-flash';
 const DEFAULT_FALLBACK_MODEL = process.env.AI_MODEL_FALLBACK;
 
 function isQuotaExhausted(message: string): boolean {
-  return message.includes('RESOURCE_EXHAUSTED') || message.includes('"code":429') || message.includes(' 429');
+  return message.includes('RESOURCE_EXHAUSTED')
+    || message.includes('"code":429')
+    || message.includes('"code":503')
+    || message.includes(' 503')
+    || message.includes(' 429');
 }
 
 async function callGeminiOnce(model: string, prompt: string, caller: string, tierIndex: number): Promise<string> {
@@ -36,13 +40,21 @@ async function callGeminiOnce(model: string, prompt: string, caller: string, tie
   const startedAt = Date.now();
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({contents: [{parts: [{text: prompt}]}]}),
   });
 
   if (!res.ok) {
     const failureReason = `Gemini API (${model}) returned ${res.status}`;
-    recordAiUsage({ caller, provider: 'gemini', model, tierIndex, outcome: 'failure', durationMs: Date.now() - startedAt, failureReason });
+    recordAiUsage({
+      caller,
+      provider: 'gemini',
+      model,
+      tierIndex,
+      outcome: 'failure',
+      durationMs: Date.now() - startedAt,
+      failureReason
+    });
     throw new Error(`${failureReason}: ${await res.text()}`);
   }
 
@@ -72,7 +84,7 @@ export interface ModelPair {
   logTag?: string;
 }
 
-const DEFAULT_PAIR: ModelPair = { primary: DEFAULT_MODEL, fallback: DEFAULT_FALLBACK_MODEL, logTag: '[ai-agents]' };
+const DEFAULT_PAIR: ModelPair = {primary: DEFAULT_MODEL, fallback: DEFAULT_FALLBACK_MODEL, logTag: '[ai-agents]'};
 
 // caller attribution for recordAiUsage reuses logTag rather than adding a new field — every
 // existing ModelPair already sets one (e.g. '[jira-triage]'), it's already per-caller, and
