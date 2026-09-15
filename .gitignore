@@ -10,3 +10,4 @@ allure-report/
 .self-heal/
 .observability/
 coverage/
+docker/reportportal/docker-compose.override.yml
