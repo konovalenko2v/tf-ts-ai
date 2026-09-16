@@ -25,6 +25,30 @@ export default defineConfig({
     // fixed argv can't add CLI reporters (see that job's comment), so this has to live in config
     // to fire on both the PR (affected) and push (full/--shard) paths alike.
     ...(process.env.CI ? [['blob'] as const] : []),
+    // ReportPortal is opt-in and off by default (local self-hosted instance, see
+    // docker/reportportal/) — gated on RP_ENDPOINT the same way `blob` is gated on CI, so a run
+    // with no ReportPortal instance configured never tries to reach one. test:affected's fixed
+    // argv can't add CLI reporters (see the blob comment above), so this has to live in config too.
+    ...(process.env.RP_ENDPOINT
+      ? [
+          [
+            '@reportportal/agent-js-playwright',
+            {
+              apiKey: process.env.RP_API_KEY,
+              endpoint: process.env.RP_ENDPOINT,
+              project: process.env.RP_PROJECT,
+              launch: process.env.RP_LAUNCH ?? 'tf-ts-ai',
+              attributes: [{ key: 'project', value: process.env.RP_PROJECT ?? 'tf-ts-ai' }],
+              description: 'tf-ts-ai regression run',
+              // Set by src/reportportal/start-launch.ts across a sharded CI run (regression.yml's
+              // test-shard matrix) so every shard attaches to the SAME launch instead of each
+              // starting its own — see that file's comment for why. Absent for a normal local
+              // single-process run, where the agent starts (and finishes) its own launch as usual.
+              launchId: process.env.RP_LAUNCH_ID,
+            },
+          ] as const,
+        ]
+      : []),
   ],
   use: {
     trace: 'retain-on-failure',

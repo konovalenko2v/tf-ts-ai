@@ -38,6 +38,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
+    "@reportportal/agent-js-playwright": "^5.5.0",
     "@types/node": "^26.5.1",
     "allure-commandline": "^2.34.0",
     "allure-js-commons": "^3.12.0",
@@ -54,6 +55,7 @@
   },
   "dependencies": {
     "@faker-js/faker": "^10.6.0",
+    "@reportportal/client-javascript": "^5.6.0",
     "dotenv": "^17.4.2",
     "healwright": "^1.8.0"
   },
