@@ -333,6 +333,16 @@ jobs:
         if: needs.test-shard.result != 'success'
         run: exit 1
 
+      # Quarantine candidates (quarantine-candidates.json, from failure-analysis) are proposals
+      # only — a human promotes one into quarantine.json by hand. This step does not touch that
+      # promotion decision; it only refuses to let an *already-quarantined* entry sit forever once
+      # its TTL passes, so quarantine.json can't quietly become a permanent graveyard. Runs
+      # regardless of the shard gate above so an expired entry is reported even on an otherwise
+      # green run.
+      - name: Check quarantine TTL
+        if: always()
+        run: npm run check-quarantine-ttl
+
   # Counterpart to rp-launch-start. Runs regardless of test's own outcome (always()) so a red run
   # still gets its ReportPortal launch closed out — an unfinished launch sits as IN_PROGRESS
   # forever otherwise, which is worse than a launch correctly marked failed.

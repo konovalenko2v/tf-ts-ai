@@ -24,6 +24,7 @@
     "allure:serve": "allure serve allure-results",
     "agent-fixer": "tsx src/agent-fixer/run.ts",
     "failure-analysis": "tsx src/failure-analysis/run.ts",
+    "check-quarantine-ttl": "tsx src/failure-analysis/check-quarantine-ttl.ts",
     "link-healed-tests": "tsx src/failure-analysis/link-healed-tests.ts",
     "test-evolution": "tsx src/test-evolution/run.ts",
     "goal-evolution": "tsx src/goal-evolution/run.ts",
