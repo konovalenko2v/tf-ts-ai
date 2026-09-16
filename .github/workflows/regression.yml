@@ -18,11 +18,51 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ReportPortal is opt-in (see docker/reportportal/) — no instance is wired into CI today, so
+  # RP_ENDPOINT is unset here and this job is always skipped; vars (not secrets) because an
+  # endpoint URL isn't sensitive, matching how playwright.config.ts reads it locally. When someone
+  # does deploy a shared instance CI can reach, setting the repo variable (and RP_API_KEY /
+  # RP_PROJECT secrets) is the only wiring needed — nothing here or in test-shard changes.
+  #
+  # Exists because test-shard is a matrix — each shard is its own Playwright process, and without
+  # a shared launch each would call playwright.config.ts's ReportPortal reporter independently and
+  # start its OWN launch, giving one ReportPortal launch per shard instead of one for the whole
+  # run. Starting the launch once, here, and handing every shard the same ID (via RP_LAUNCH_ID)
+  # is the fix the agent's own docs recommend for sharded runs — see
+  # node_modules/@reportportal/agent-js-playwright/README.md, "Using the launchId config option".
+  rp-launch-start:
+    if: vars.RP_ENDPOINT != ''
+    runs-on: ubuntu-latest
+    outputs:
+      launch_id: ${{ steps.start.outputs.launch_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      - run: npm ci
+      - name: Start ReportPortal launch
+        id: start
+        run: npx tsx src/reportportal/start-launch.ts
+        env:
+          RP_ENDPOINT: ${{ vars.RP_ENDPOINT }}
+          RP_API_KEY: ${{ secrets.RP_API_KEY }}
+          RP_PROJECT: ${{ vars.RP_PROJECT }}
+          RP_LAUNCH: 'tf-ts-ai CI #${{ github.run_number }}'
+
   # Sharding example (shard count = 1 for now — a real split just raises `shard-count` below).
   # This job runs the suite in N parallel slices; `test` (further down) is the aggregate that
   # merges their reports and is what branch protection actually requires — see that job's own
   # comment for why the names are split this way.
   test-shard:
+    needs: rp-launch-start
+    # `needs` alone would skip this whole job when rp-launch-start is itself skipped (the normal
+    # case, RP_ENDPOINT unset) — always() plus the explicit result check keeps test-shard running
+    # in that case and only fails it if rp-launch-start actually ran and failed.
+    if: |
+      always() &&
+      (needs.rp-launch-start.result == 'success' || needs.rp-launch-start.result == 'skipped')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -119,6 +159,13 @@ jobs:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_MODEL: 'gemini-3.6-flash'
           AI_MODEL_FALLBACK: 'gemini-3.5-flash'
+          # Empty string (not unset) when rp-launch-start was skipped — playwright.config.ts only
+          # adds the ReportPortal reporter when RP_ENDPOINT is truthy, so an empty RP_LAUNCH_ID
+          # alongside it is harmless and never reached.
+          RP_ENDPOINT: ${{ vars.RP_ENDPOINT }}
+          RP_API_KEY: ${{ secrets.RP_API_KEY }}
+          RP_PROJECT: ${{ vars.RP_PROJECT }}
+          RP_LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
 
       - name: Failure analysis
         if: always()
@@ -285,6 +332,28 @@ jobs:
       - name: Gate on shard results
         if: needs.test-shard.result != 'success'
         run: exit 1
+
+  # Counterpart to rp-launch-start. Runs regardless of test's own outcome (always()) so a red run
+  # still gets its ReportPortal launch closed out — an unfinished launch sits as IN_PROGRESS
+  # forever otherwise, which is worse than a launch correctly marked failed.
+  rp-launch-finish:
+    if: always() && needs.rp-launch-start.result == 'success'
+    needs: [rp-launch-start, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      - run: npm ci
+      - name: Finish ReportPortal launch
+        run: npx tsx src/reportportal/finish-launch.ts
+        env:
+          RP_ENDPOINT: ${{ vars.RP_ENDPOINT }}
+          RP_API_KEY: ${{ secrets.RP_API_KEY }}
+          RP_PROJECT: ${{ vars.RP_PROJECT }}
+          RP_LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
 
   # PR-only skip, not a failure: the github-pages environment's branch protection rejects any
   # deploy attempt from a PR merge ref (refs/pull/N/merge) — only push/workflow_dispatch against

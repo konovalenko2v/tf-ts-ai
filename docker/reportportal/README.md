@@ -15,9 +15,23 @@ docker compose -p reportportal --profile core up -d
 ```
 
 `--profile core` starts the minimal stack (UI, API, Postgres, RabbitMQ, OpenSearch, MinIO, index
-services) — enough to receive and browse Playwright launches. Add `--profile analyzer` if you also
-want ReportPortal's ML-based failure-similarity analyzer; it's a separate, heavier service this
-project's integration doesn't require.
+services) — enough to receive and browse Playwright launches.
+
+### Optional: Auto-Analyzer
+
+Add `--profile analyzer` (alongside `core`, not instead of it) to also start ReportPortal's
+ML-based failure-similarity service:
+
+```bash
+docker compose -p reportportal --profile core --profile analyzer up -d
+```
+
+It compares each new failure's error message/stack trace against ones already triaged in the
+project and auto-suggests a defect type (`Product Bug` / `Auto Bug` / `System Issue` / `Ignored`)
+instead of leaving every failure as `To Investigate` for a human to classify from scratch. It needs
+a few triaged launches in the project before it has anything to compare against, and it's a
+separate, heavier service (its own container) — left off by default since this project's
+integration doesn't require it to function.
 
 UI: http://localhost:8080 — default login `superadmin` / `RP_INITIAL_ADMIN_PASSWORD` (or `erebus`
 if unset). Change the default password and create a real project before pointing real runs at it.
@@ -63,11 +77,22 @@ passing `--reporter=...` on the CLI **replaces** the config's whole reporter arr
 Playwright behavior) — don't add it when you want the ReportPortal (or any config-declared)
 reporter to actually run.
 
-## Not done here
+## CI wiring (opt-in, unset today)
 
-- No CI wiring. `regression.yml` does not set `RP_ENDPOINT`, so ReportPortal stays local/opt-in —
-  wiring it into CI would mean running this stack somewhere CI can reach it (not the GitHub-hosted
-  runner itself), which is a separate infrastructure decision.
-- Sharded runs (`test-shard` in `regression.yml`) each start Playwright separately; without extra
-  launch-merge configuration in `rpConfig`, a sharded run would create one ReportPortal launch per
-  shard rather than one merged launch. Not addressed since CI doesn't send to ReportPortal yet.
+`regression.yml` has the plumbing for a shared ReportPortal instance CI can reach, but no such
+instance is deployed yet — `vars.RP_ENDPOINT` is unset, so `rp-launch-start`/`rp-launch-finish`
+and the `RP_*` env vars on `test-shard` are all no-ops (the jobs skip; the reporter never engages).
+To actually wire it up: deploy a reachable ReportPortal instance (this local Docker stack is a
+_local_ instance — a GitHub-hosted runner can't reach `localhost` on your machine), then set the
+repo variables `RP_ENDPOINT` and `RP_PROJECT` and the repo secret `RP_API_KEY`.
+
+Sharded runs (`test-shard`'s matrix) are handled: `rp-launch-start` starts one ReportPortal launch
+before the matrix and hands every shard the same ID via `RP_LAUNCH_ID`
+(`playwright.config.ts` → `launchId`), so all shards attach to it instead of each starting their
+own. `rp-launch-finish` closes it out after the `test` aggregate job, `always()`-gated so a red run
+still gets its launch finished rather than left `IN_PROGRESS` forever. This is the mechanism the
+agent's own docs recommend for sharded runs — see
+`node_modules/@reportportal/agent-js-playwright/README.md`, "Using the launchId config option".
+Not verified live (no CI-reachable instance to test against) — typecheck/lint/format clean, and
+`src/reportportal/start-launch.ts` + `finish-launch.ts` were each verified live against the local
+Docker stack individually (start → real launch created, finish → real launch closed via the API).

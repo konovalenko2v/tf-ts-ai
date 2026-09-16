@@ -40,6 +40,11 @@ export default defineConfig({
               launch: process.env.RP_LAUNCH ?? 'tf-ts-ai',
               attributes: [{ key: 'project', value: process.env.RP_PROJECT ?? 'tf-ts-ai' }],
               description: 'tf-ts-ai regression run',
+              // Set by src/reportportal/start-launch.ts across a sharded CI run (regression.yml's
+              // test-shard matrix) so every shard attaches to the SAME launch instead of each
+              // starting its own — see that file's comment for why. Absent for a normal local
+              // single-process run, where the agent starts (and finishes) its own launch as usual.
+              launchId: process.env.RP_LAUNCH_ID,
             },
           ] as const,
         ]
