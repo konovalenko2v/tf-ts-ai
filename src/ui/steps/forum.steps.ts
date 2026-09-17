@@ -30,9 +30,14 @@ export class ForumSteps {
     await test.step('Upload a picture file', async () => this.formPage.uploadFile(filePath));
   }
 
-  async fillAddressAndLocation() {
-    await test.step('Fill current address and select state/city', async () =>
-      this.formPage.fillAddressAndSelectLocation('123 Main Street, Springfield'));
+  async fillAddress() {
+    await test.step('Fill current address', async () => this.formPage.fillAddress('123 Main Street, Springfield'));
+  }
+
+  // Needs a self-healing provider — see practice-form.page.ts's selectStateAndCity. Callers skip
+  // this step (not the whole spec) when none is configured, so the rest of the form still runs.
+  async selectStateAndCity() {
+    await test.step('Select state/city', async () => this.formPage.selectStateAndCity());
   }
 
   async submitForm() {

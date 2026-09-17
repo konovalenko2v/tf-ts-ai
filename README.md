@@ -330,6 +330,17 @@ Without `SELF_HEAL=1`, `heal.*` calls behave like their plain Playwright equival
 latency in normal runs.
 
 > [!NOTE]
+> **Known coverage gap in claude-only-edition**: `tests/ui/forum.spec.ts`'s state/city dropdown step
+> (`PracticeFormPage.selectStateAndCity`) needs a self-healing provider — its state locator is deliberately
+> broken to demo self-healing — so the spec conditionally skips just that one step when `SELF_HEAL` isn't `1`,
+> which is always true in CI. The rest of the form (personal details, date picker, file upload, subjects/hobbies,
+> submit, success modal) still runs and is asserted in CI; only the state/city selection has no CI coverage.
+> This is also [agent-fixer](#3-agent-fixer)'s only allowed auto-merge target
+> (`ALLOWED_TARGET_FILES` in `src/agent-fixer/safety-gates.ts`), so its repeat-based stability gate
+> (`verify-stability.ts`) exercises the rest of the form, not the healed locator itself, in this edition — the
+> autonomous auto-merge path is effectively dormant here without a CI-reachable self-healing provider.
+
+> [!NOTE]
 > `heal.*` only calls the AI on a cache miss, after a normal Playwright locator attempt has already failed —
 > it is not a wrapper that calls AI on every interaction. Wrapping every locator in `heal.*` "just in case" would
 > be wrong: healing hides a regression instead of catching it, so only the handful of genuinely brittle locators
