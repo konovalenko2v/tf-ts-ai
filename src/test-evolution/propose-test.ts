@@ -1,7 +1,7 @@
 // Proposes one new edge-case test for an existing spec, in the same style, backed by an AI CLI
 // agent — the same pattern agent-fixer already validates (branch, AI edits files, PR), applied to
-// authoring instead of repair. Runs the shared 3-tier CLI fallback (Claude -> Gemini -> Gemini,
-// see src/ai-agents/cli-fallback.ts) under the test-developer persona (ai-agents/personas/).
+// authoring instead of repair. Runs the Claude CLI call (see src/ai-agents/cli-fallback.ts) under
+// the test-developer persona (ai-agents/personas/).
 //
 // The gate here can't be "compiles" the way agent-fixer's locator fix can: a generated assertion
 // can compile and still be *wrong* — e.g. asserting a 400 where this API documents a 200 for the

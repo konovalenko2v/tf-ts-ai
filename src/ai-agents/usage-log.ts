@@ -21,9 +21,12 @@ export interface AiUsageEvent {
   timestamp: string;
   /** Which module invoked runAgenticEdit — passed by the caller for attribution (e.g. 'test-evolution', 'agent-fixer', 'goal-evolution'). */
   caller: string;
+  // 'gemini' kept in the type even though claude-only-edition never writes it: pre-existing
+  // .observability/ai-usage.jsonl history from before this edition may still contain it, and
+  // readAiUsage() must keep parsing that history rather than throwing on an old record.
   provider: 'claude' | 'gemini';
   model: string;
-  /** Tier index within the fallback chain (0 = primary Claude call, 1+ = Gemini tiers). Lets a report show "how often do we fall past tier N". */
+  /** Tier index within the fallback chain (0 = primary Claude call). claude-only-edition has no other tier — this is always 0. */
   tierIndex: number;
   outcome: 'success' | 'failure' | 'timeout';
   durationMs: number;
@@ -31,7 +34,7 @@ export interface AiUsageEvent {
   outputTokens?: number;
   cacheCreationInputTokens?: number;
   cacheReadInputTokens?: number;
-  /** USD, only ever populated for the Claude tier — Claude CLI's --output-format json reports total_cost_usd directly; Gemini's json output does not report a dollar figure, so cost for Gemini calls is left undefined rather than estimated from an unverified public price list. */
+  /** USD — Claude CLI's --output-format json reports total_cost_usd directly. */
   costUsd?: number;
   /** First line only of the failure/timeout reason, if any — enough to classify without logging a full stack trace into a cost-tracking stream. */
   failureReason?: string;

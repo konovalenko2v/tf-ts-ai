@@ -14,14 +14,17 @@ const PRIMARY_MODEL = process.env.AI_MODEL;
 const FALLBACK_MODEL = process.env.AI_MODEL_FALLBACK;
 
 // Covers two distinct failure shapes, only one of which the model-switch below is a real fix for:
-// a 429/RESOURCE_EXHAUSTED quota error is genuinely per-model (Free-tier Gemini quotas are tracked
-// per model — confirmed by the 429 payload's quotaId "GenerateRequestsPerDayPerProjectPerModel-
-// FreeTier" — so a second model has its own untouched daily allowance). A 503/UNAVAILABLE
-// ("experiencing high demand") is transient shared-capacity trouble, not a quota — a sibling model
-// may sit behind the same overloaded backend, so switching models here is a best-effort attempt,
-// not the guarantee the 429 path is. Also note the switch is per-test, not per-run: `page` fixture
-// below rebuilds this wrapper (and resets switchedToFallback) on every Playwright retry, so a 503
-// that recurs across retries hits the primary model again each time rather than staying on fallback.
+// a 429/RESOURCE_EXHAUSTED quota error is genuinely per-model on a cloud provider with per-model
+// free-tier quotas (confirmed live on Gemini's free tier, back when this project used it — the 429
+// payload's quotaId "GenerateRequestsPerDayPerProjectPerModel-FreeTier" showed a second model had
+// its own untouched daily allowance). A 503/UNAVAILABLE ("experiencing high demand") is transient
+// shared-capacity trouble, not a quota — a sibling model may sit behind the same overloaded
+// backend, so switching models here is a best-effort attempt, not the guarantee the 429 path is.
+// claude-only-edition: AI_PROVIDER is 'local' (Ollama) by default, where neither failure shape
+// applies the same way — this fallback path only activates at all if AI_MODEL_FALLBACK is set.
+// Also note the switch is per-test, not per-run: `page` fixture below rebuilds this wrapper (and
+// resets switchedToFallback) on every Playwright retry, so a 503 that recurs across retries hits
+// the primary model again each time rather than staying on fallback.
 function isRetryableAiError(err: unknown): boolean {
   if (!(err instanceof HealError)) return false;
   const message = String((err as Error).message ?? '');

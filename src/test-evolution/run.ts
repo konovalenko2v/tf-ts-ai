@@ -72,14 +72,14 @@ async function main(): Promise<void> {
   const branch = `${BRANCH_PREFIX}${Date.now()}`;
   execFileSync('git', ['checkout', '-b', branch], { stdio: 'inherit' });
 
-  // CLI failures (quota, rate limit, network) must not leave an orphaned branch behind — same
-  // isolation agent-fixer applies around its own AI calls. proposeTest() already runs the shared
-  // 3-tier fallback (claude primary -> gemini primary -> gemini fallback, cli-fallback.ts) internally, so
-  // reaching this catch means all three tiers failed.
+  // CLI failures (rate limit, network, not authenticated) must not leave an orphaned branch behind
+  // — same isolation agent-fixer applies around its own AI calls. proposeTest() already runs the
+  // Claude CLI call (cli-fallback.ts) internally, so reaching this catch means that call failed —
+  // claude-only-edition has no further fallback tier to retry.
   try {
     proposeTest(REFERENCE_FILE, OUTPUT_FILE);
   } catch (err) {
-    abandon(branch, `AI CLI failed (all 3 tiers: gemini primary, gemini fallback, claude): ${(err as Error).message}`, false);
+    abandon(branch, `AI CLI failed: ${(err as Error).message}`, false);
     return;
   }
 

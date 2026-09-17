@@ -10,8 +10,8 @@
 // non-finding a paranoid review would flag:
 //   1. Generation itself never returns — an infra/model problem (hung CLI, auth, outage). Bounded
 //      by ATTEMPT_TIMEOUT_MS per attempt (via cli-fallback's CliTimeoutError — a timeout is
-//      re-thrown immediately, never silently falls through to the Gemini tiers, so it isn't
-//      mistaken for "the model failed").
+//      re-thrown immediately as its own distinct error type, so it isn't mistaken for "the model
+//      failed").
 //   2. The driver comes back but violates its contract (writes its own expect(...), hardcodes an
 //      identity, etc.) — the agent broke the rules it was given. No budget needed: this is
 //      detected by reading the file, not by running anything.

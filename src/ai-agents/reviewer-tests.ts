@@ -5,10 +5,8 @@
 //
 // Deliberately a stronger/differently-configured Claude call than generation: test-developer runs
 // Claude at --effort medium (cli-fallback.ts, cheap.env's AI_AGENTS_CLAUDE_EFFORT); a cheap-effort
-// pass reviewing its own cheap-effort output defeats the purpose of a paranoid pass. Uses the CLI
-// (same auth as generation — no separate paid API key) rather than the Gemini REST helper
-// (gemini-text.ts) other verdict callers (jira-triage, qa-analyst) use, so it can run on Claude
-// specifically instead of Gemini.
+// pass reviewing its own cheap-effort output defeats the purpose of a paranoid pass. Same auth as
+// generation — the existing claude CLI subscription session, no separate paid API key.
 //
 // Loads ai-agents/profiles/paranoid.env itself (rather than requiring the caller to `source` it
 // first) — a review step that silently falls back to generation-tier settings when the profile

@@ -9,9 +9,8 @@
 // between run.ts and regression.yml, and the fix was a single exported constant plus a test that
 // fails when the two diverge (see safety-gates.ts / safety-gates.spec.ts). Same reasoning here.
 //
-// Deliberately provider-agnostic: reviewer-tests reaches the model through the `claude` CLI, while
-// pr-reviewer goes through the Gemini REST helper (gemini-text.ts) because CI has no Claude
-// credential. Nothing below knows or cares which — it parses text.
+// Deliberately provider-agnostic: reviewer-tests and pr-reviewer both reach the model through the
+// `claude` CLI (see cli-fallback.ts), but nothing below knows or cares — it parses text.
 
 export type Severity = 'ok' | 'minor' | 'major';
 

@@ -1,4 +1,4 @@
-// Aggregates .observability/ai-usage.jsonl (written by cli-fallback.ts's runClaude/runGemini)
+// Aggregates .observability/ai-usage.jsonl (written by cli-fallback.ts's runClaude)
 // into a per-caller, per-model cost/token summary — the missing piece the "enterprise
 // applicability" review flagged: without this, AI spend was only ever visible per-call in scrolled-
 // past terminal output, never as a total anyone could budget against.
@@ -15,7 +15,7 @@ interface Bucket {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
-  costUsdKnown: boolean; // false when every call in this bucket lacked a cost figure (Gemini tiers)
+  costUsdKnown: boolean; // false when every call in this bucket failed before reporting usage, or predates cost tracking
 }
 
 function emptyBucket(): Bucket {
@@ -70,9 +70,7 @@ function main(): void {
   const printTable = (title: string, rows: Map<string, Bucket>) => {
     process.stdout.write(`\n${title}\n`);
     for (const [key, b] of rows) {
-      const cost = b.costUsdKnown
-        ? `$${b.costUsd.toFixed(4)}`
-        : 'n/a (no cost figure for any call in this row — Gemini reports tokens only, and/or every call failed before reporting usage)';
+      const cost = b.costUsdKnown ? `$${b.costUsd.toFixed(4)}` : 'n/a (every call in this row failed before reporting usage)';
       process.stdout.write(
         `  ${key.padEnd(20)} calls=${b.calls} (ok=${b.successes} fail=${b.failures} timeout=${b.timeouts})  ` +
           `tokens in/out=${b.inputTokens}/${b.outputTokens}  cost=${cost}\n`,
@@ -83,10 +81,7 @@ function main(): void {
   process.stdout.write(`AI usage report — ${events.length} recorded call(s), from .observability/ai-usage.jsonl\n`);
   printTable('By caller (module that invoked runAgenticEdit):', byCaller);
   printTable('By model:', byModel);
-  process.stdout.write(
-    `\nTotal known cost: ${overall.costUsdKnown ? `$${overall.costUsd.toFixed(4)}` : 'n/a'} ` +
-      `(Claude-tier calls only — Gemini's CLI json output does not report a dollar figure, see usage-log.ts)\n`,
-  );
+  process.stdout.write(`\nTotal known cost: ${overall.costUsdKnown ? `$${overall.costUsd.toFixed(4)}` : 'n/a'}\n`);
 }
 
 main();
