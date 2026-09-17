@@ -62,22 +62,28 @@ export default defineConfig({
       // Test's own `test`/`expect` work fine for plain function calls, and this project just
       // never uses any browser/API fixture.
       name: 'unit',
-      testDir: './tests/unit',
+      // Scoped via testMatch against the top-level testDir, not a per-project testDir — a
+      // per-project testDir is what made the WebStorm/IntelliJ Playwright plugin's gutter-icon
+      // run unable to resolve which --project a file belongs to (each project claimed its own
+      // isolated root, and the plugin's file->project matching doesn't reliably handle that
+      // shape). A single shared testDir + testMatch per project is the same scheme
+      // ui-automation-tests (wlt) uses, and gutter-icon runs resolve correctly there.
+      testMatch: '**/tests/unit/**/*.spec.ts',
       fullyParallel: true,
     },
     {
       name: 'api',
-      testDir: './tests/api',
+      testMatch: '**/tests/api/**/*.spec.ts',
       fullyParallel: false,
     },
     {
       name: 'graphql',
-      testDir: './tests/graphql',
+      testMatch: '**/tests/graphql/**/*.spec.ts',
       fullyParallel: false,
     },
     {
       name: 'ui',
-      testDir: './tests/ui',
+      testMatch: '**/tests/ui/**/*.spec.ts',
       timeout: 60_000,
       use: { ...devices['Desktop Chrome'], headless: !!process.env.CI },
     },
