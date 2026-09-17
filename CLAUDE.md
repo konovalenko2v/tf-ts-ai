@@ -25,6 +25,7 @@ duplicate README content here; link to its section (`README.md#N`) instead.
 | PR review gate (whole-diff review, blocks merge)                                   | `src/ai-agents/pr-reviewer.ts`, `ai-agents/personas/pr-reviewer.md`, shared verdict grammar in `src/ai-agents/review-verdict.ts`, `pr-review` job in `regression.yml`      | README §11                  |
 | Env vars / config                                                                  | `src/core/config.ts`, `src/core/global-setup.ts` (fails fast on missing vars), `.env.example` (full inventory)                                                             | —                           |
 | CI pipeline                                                                        | `.github/workflows/regression.yml`                                                                                                                                         | —                           |
+| Secret scanning (blocking gate)                                                    | `secret-scan` job in `regression.yml` (gitleaks)                                                                                                                           | —                           |
 
 Personas on disk (9): `qa-analyst`, `test-developer`, `locator-medic`, `reviewer-tests`,
 `pr-reviewer`, `goal-solver` (extends `test-developer`), `healing-classifier`, `retry-dispatcher`,

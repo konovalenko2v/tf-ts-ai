@@ -18,6 +18,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Independent of test-shard: cheap and unrelated to Playwright, so it runs in parallel rather
+  # than as a step inside a 2-way sharded matrix (which would run it twice for no reason). Scans
+  # the diff on a PR (fetch-depth: 0 + GITLEAKS_CONFIG below restricts detection to the PR's own
+  # commits, not the whole repo history) and the full push on master. Catches what CLAUDE.md rule
+  # #4 ("nothing hardcoded") states as policy but that only pr-reviewer (an AI call, not
+  # deterministic) currently checks for — this is the same requirement, enforced deterministically.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # ReportPortal is opt-in (see docker/reportportal/) — no instance is wired into CI today, so
   # RP_ENDPOINT is unset here and this job is always skipped; vars (not secrets) because an
   # endpoint URL isn't sensitive, matching how playwright.config.ts reads it locally. When someone
@@ -581,9 +599,10 @@ jobs:
     if: |
       needs.test.result == 'success' &&
       needs['pr-review'].result == 'success' &&
+      needs['secret-scan'].result == 'success' &&
       github.event_name == 'pull_request' &&
       startsWith(github.head_ref, 'agent-fixer/cache/')
-    needs: [test, pr-review]
+    needs: [test, pr-review, secret-scan]
     runs-on: ubuntu-latest
     permissions:
       contents: write
