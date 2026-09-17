@@ -1,40 +1,42 @@
 // pr-reviewer: reads one pull request's full diff and returns a structured verdict under the
 // pr-reviewer persona. Read-only — never edits, pushes to, merges or closes the PR it reviews.
 //
-// Provider: the Gemini REST helper (gemini-text.ts), NOT the `claude` CLI that reviewer-tests.ts
-// uses. That is a CI constraint, not a preference: the GitHub runner has no `claude` binary (the
-// agent-fixer job has to `npm install -g @google/gemini-cli` for the same reason) and the repo's
-// secrets carry no Anthropic credential — only AI_API_KEY, which is exactly what callGemini reads.
-// A blocking gate built on a CLI that cannot authenticate in CI would be red on arrival on every
-// PR, which is the failure mode regression.yml's own --max-warnings comment already warns about.
-// runAgenticEdit() in cli-fallback.ts was the other candidate and does not fit either: it returns
-// void (it exists for agentic FILE EDITS) and this call must return text, from a persona whose
-// entire contract is that it never edits a file.
+// claude-only-edition: this used to run as a GitHub Actions CI gate via the Gemini REST helper
+// (gemini-text.ts, now deleted), because the GitHub runner had no `claude` binary and the repo's
+// secrets carried no Anthropic credential. This edition has no Gemini key and no paid Anthropic
+// API key at all — the only AI available is the `claude` CLI's existing subscription session,
+// which only authenticates on this machine, not on a GitHub-hosted runner. So this is no longer a
+// CI gate: it's a local, manual step you run yourself (npm run pr-review -- <pr-number>) before
+// pushing, the same way reviewer-tests.ts already reviews a single generated test file via the
+// same CLI. See README's PR Review Gate section for the CI-vs-local tradeoff this switch makes.
 //
-// Model pair is passed explicitly rather than defaulting to AI_MODEL/AI_MODEL_FALLBACK: those are
-// healwright's own runtime healing allowance (see cli-fallback.ts's header), and a review call
-// silently competing with self-healing for the same quota is how one feature starts breaking the
-// other. The workflow sets them in the job's env block, same as the jira-triage job does.
+// Same auth as reviewer-tests.ts/cli-fallback.ts (existing Claude Code CLI subscription, no
+// separate API key) rather than runAgenticEdit() in cli-fallback.ts, which returns void (it exists
+// for agentic FILE EDITS) — this call must return text, from a persona whose entire contract is
+// that it never edits a file.
 //
 // ## Exit-code contract (the load-bearing decision here)
 //
-// This runs as a BLOCKING CI check, so what it does on failure matters more than what it does on
-// success. Two conditions are deliberately not the same thing:
+// Even run locally rather than as a CI gate, this can still be wired into a pre-push hook, so what
+// it does on failure still matters more than what it does on success. Two conditions are
+// deliberately not the same thing:
 //
-//   - The review ran and found a `major` problem  -> exit 1. The PR is blocked. That is the point.
-//   - The review could not run at all             -> exit 0, loudly. Missing AI_API_KEY, an
-//     exhausted quota (documented live in this repo more than once), or output the persona's own
-//     grammar can't parse are all facts about the INFRASTRUCTURE, not about the PR. Failing the
-//     check on those would turn every PR red for reasons its author cannot fix or act on, and a
-//     gate that is red for unrelated reasons is a gate people learn to ignore.
+//   - The review ran and found a `major` problem  -> exit 1. The push should be reconsidered.
+//   - The review could not run at all             -> exit 0, loudly. The `claude` CLI not being
+//     installed/authenticated, or output the persona's own grammar can't parse, are facts about
+//     the INFRASTRUCTURE, not about the PR. Failing on those would turn a local check red for
+//     reasons its author cannot fix or act on, and a gate that is red for unrelated reasons is a
+//     gate people learn to ignore (bypass with --no-verify).
 //
-// The unavailable path still says so as loudly as it can — stderr line plus a PR comment — so
-// "nobody reviewed this" is never silently indistinguishable from "reviewed and clean".
+// The unavailable path still says so as loudly as it can — stderr line plus a PR comment (when run
+// against an already-open PR) — so "nobody reviewed this" is never silently indistinguishable from
+// "reviewed and clean".
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { callGemini, ModelPair } from './gemini-text';
+import { parseClaudeJson } from './cli-fallback';
+import { recordAiUsage } from './usage-log';
 import { ReviewVerdict, renderVerdict, parseReviewVerdict } from './review-verdict';
 
 const PERSONA_FILE = path.join(__dirname, '../../ai-agents/personas/pr-reviewer.md');
@@ -46,13 +48,12 @@ const PERSONA_FILE = path.join(__dirname, '../../ai-agents/personas/pr-reviewer.
 // partial diff instead of confidently reviewing a file whose second half it never saw.
 const MAX_DIFF_BYTES = Number(process.env.PR_REVIEW_MAX_DIFF_BYTES) || 200_000;
 
-const MODELS: ModelPair = {
-  primary: process.env.AI_MODEL ?? 'gemini-3.6-flash',
-  fallback: process.env.AI_MODEL_FALLBACK,
-  // callerFrom() derives cost attribution in .observability/ai-usage.jsonl from this tag — see
-  // gemini-text.ts. No new field needed for the usage log to break this out per caller.
-  logTag: '[pr-reviewer]',
-};
+// Same tier/effort knobs reviewer-tests.ts uses for its own paranoid-profile Claude call — a
+// review at the same effort as generation defeats the point of a review pass. Falls back to a
+// sensible default rather than requiring ai-agents/profiles/paranoid.env to be sourced, since this
+// is meant to be run ad hoc by hand.
+const REVIEW_CLAUDE_TIER = process.env.AI_REVIEW_CLAUDE_TIER ?? 'sonnet';
+const REVIEW_CLAUDE_EFFORT = process.env.AI_REVIEW_CLAUDE_EFFORT ?? 'high';
 
 /** Why a review could not be produced. Distinct from "the review found problems". */
 export class ReviewUnavailableError extends Error {
@@ -130,10 +131,6 @@ export function buildPrompt(persona: string, prNumber: string, title: string, bo
 }
 
 export async function reviewPullRequest(prNumber: string, title: string, body: string): Promise<ReviewVerdict> {
-  if (!process.env.AI_API_KEY) {
-    throw new ReviewUnavailableError('AI_API_KEY is not set');
-  }
-
   const persona = fs.readFileSync(PERSONA_FILE, 'utf-8');
   const diff = truncateDiff(fetchPrDiff(prNumber));
 
@@ -141,17 +138,68 @@ export async function reviewPullRequest(prNumber: string, title: string, body: s
     throw new ReviewUnavailableError(`\`gh pr diff ${prNumber}\` returned an empty diff`);
   }
 
-  let text: string;
+  const prompt = buildPrompt(persona, prNumber, title, body, diff);
+
+  // Read-only tools only — pr-reviewer must never edit the PR it's reviewing. --output-format json
+  // (piped, not inherited) so cost/token usage can be recorded via recordAiUsage — same pattern as
+  // reviewer-tests.ts's identical Claude CLI call.
+  const startedAt = Date.now();
+  let stdout: string;
   try {
-    text = await callGemini(buildPrompt(persona, prNumber, title, body, diff), MODELS);
+    stdout = execFileSync(
+      'claude',
+      [
+        '-p',
+        prompt,
+        '--model',
+        REVIEW_CLAUDE_TIER,
+        '--effort',
+        REVIEW_CLAUDE_EFFORT,
+        '--permission-mode',
+        'plan',
+        '--allowedTools',
+        'Read,Grep,Glob',
+        '--output-format',
+        'json',
+      ],
+      { encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 },
+    );
   } catch (err) {
-    // callGemini already retried its fallback model on a 429 before throwing, so reaching here
-    // means both tiers are unavailable — an infrastructure fact, per the exit-code contract above.
-    throw new ReviewUnavailableError(`model call failed: ${(err as Error).message.split('\n')[0]}`);
+    recordAiUsage({
+      caller: 'pr-reviewer',
+      provider: 'claude',
+      model: REVIEW_CLAUDE_TIER,
+      tierIndex: 0,
+      outcome: 'failure',
+      durationMs: Date.now() - startedAt,
+      failureReason: (err as Error).message?.split('\n')[0],
+    });
+    // The `claude` CLI not being installed or not authenticated is an infrastructure fact, per the
+    // exit-code contract above — never evidence the PR itself is bad.
+    throw new ReviewUnavailableError(`claude CLI call failed: ${(err as Error).message.split('\n')[0]}`);
+  }
+
+  const parsed = parseClaudeJson(stdout);
+  recordAiUsage({
+    caller: 'pr-reviewer',
+    provider: 'claude',
+    model: REVIEW_CLAUDE_TIER,
+    tierIndex: 0,
+    outcome: 'success',
+    durationMs: Date.now() - startedAt,
+    inputTokens: parsed?.usage?.input_tokens,
+    outputTokens: parsed?.usage?.output_tokens,
+    cacheCreationInputTokens: parsed?.usage?.cache_creation_input_tokens,
+    cacheReadInputTokens: parsed?.usage?.cache_read_input_tokens,
+    costUsd: parsed?.total_cost_usd,
+  });
+
+  if (!parsed) {
+    throw new ReviewUnavailableError(`could not parse claude's --output-format json response: ${stdout}`);
   }
 
   try {
-    return parseReviewVerdict(text);
+    return parseReviewVerdict(parsed.result ?? '');
   } catch (err) {
     // A formatting slip by the model is not evidence the PR is bad — surfaced as unavailable, not
     // as a blocking finding. See review-verdict.ts's parseReviewVerdict doc comment.
