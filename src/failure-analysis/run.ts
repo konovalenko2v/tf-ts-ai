@@ -5,6 +5,7 @@ import { latestRunFile, readEvents } from '../observability/run-file';
 import { groupFailures, summarizeRecoveries, FailureCategory } from './classify';
 import { readHealEvents } from './heal-events';
 import { dispatchRetry, RetryVerdict } from './retry-dispatch';
+import { updateCandidatesFromRun, readQuarantineList, isQuarantined, QUARANTINE_CANDIDATES_FILE } from './quarantine';
 
 const HEAL_EVENTS_FILE = '.self-heal/heal_events.jsonl';
 const ALLURE_RESULTS_DIR = 'allure-results';
@@ -80,9 +81,13 @@ function renderReport(
   } else {
     const totalFailedTests = groups.reduce((sum, g) => sum + g.count, 0);
     lines.push(`${totalFailedTests} test(s) failed, grouped into ${groups.length} distinct cause(s):`, '');
+    const quarantined = readQuarantineList();
     for (const g of groups) {
       const flakyNote = g.allFlaky ? ' — passed on retry (flaky)' : '';
-      lines.push(`## ${CATEGORY_LABELS[g.category]} — ${g.count} test(s)${flakyNote}`, '');
+      const quarantineNote = g.testTitlePaths.some((p) => isQuarantined(p.trim(), quarantined))
+        ? ' [QUARANTINED — not a merge blocker]'
+        : '';
+      lines.push(`## ${CATEGORY_LABELS[g.category]} — ${g.count} test(s)${flakyNote}${quarantineNote}`, '');
       lines.push(`Signature: \`${g.signature}\``, '');
       lines.push(`Retry verdict: ${RETRY_VERDICTS[g.category]}`, '');
       const advice = retryAdvice.get(g.signature);
@@ -156,6 +161,15 @@ async function main(): Promise<void> {
   const retryAdvice = await adviseUncategorized(groups, tests);
   const report = renderReport(runFile, groups, recoveries, retryAdvice);
   writeAllureEnvironment(recoveries);
+
+  // Candidate detection only, never a write to quarantine.json itself — a human reviews
+  // quarantine-candidates.json and promotes entries by hand (see quarantine.ts's header comment).
+  const candidates = updateCandidatesFromRun(groups, runFile);
+  if (candidates.length > 0) {
+    process.stderr.write(
+      `[failure-analysis] ${candidates.length} quarantine candidate(s) written to ${QUARANTINE_CANDIDATES_FILE} — human review required before adding to quarantine.json\n`,
+    );
+  }
 
   const outPath = path.join(path.dirname(runFile), `failure-analysis-${path.basename(runFile, '.jsonl')}.md`);
   fs.writeFileSync(outPath, report);

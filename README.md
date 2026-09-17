@@ -387,6 +387,28 @@ constraint under "Not yet built"). A failed call logs to stderr and leaves the d
 `classifyRecovery` has no caller yet — it is meant to gate agent-fixer, which means wiring it in changes what
 gets auto-merged, so it stays uncalled until that gate is designed deliberately rather than by import.
 
+### Flaky-test quarantine (detection + TTL only — no merge-gate exemption yet)
+
+`quarantine.ts` extends the `allFlaky` signal `groupFailures()` already computes per run into a
+cross-run history: every `npm run failure-analysis` run appends each all-flaky group to
+`quarantine-history.jsonl` (committed to the repo — CI runners are ephemeral, so this file, not
+`.observability/`, is what makes "flaky in N of the last M runs" possible at all) and recomputes
+`quarantine-candidates.json` — signatures flaky in ≥30% of the last 10 runs.
+
+**Detection is fully automatic; promotion is manual.** Nothing writes `quarantine.json` itself — a
+human reviews `quarantine-candidates.json` and adds an entry by hand, each with an `expiresAt`
+(14-day TTL). `check-quarantine-ttl.ts` runs as its own CI step (`regression.yml`, after "Gate on
+shard results") and fails loudly if any entry is past its TTL, so a quarantined test can't sit
+forgotten forever — it's either renewed or removed as an explicit decision.
+
+**What this does NOT do yet**: a quarantined test's failure still fails its shard and still blocks
+the required `test` check — `regression.yml`'s shard gate is a single `job.result != 'success'`
+check with no per-test carve-out, and building one means changing how shard success is computed,
+which is a bigger, separate decision than detection. Today, quarantine only makes the situation
+_visible_: the failure-analysis report tags a quarantined group's heading with
+`[QUARANTINED — not a merge blocker]` so a human reviewing a red run knows it's a known flake, not
+new information — the merge decision itself is still manual.
+
 ## 5. Affected-Test Selection
 
 ```bash
