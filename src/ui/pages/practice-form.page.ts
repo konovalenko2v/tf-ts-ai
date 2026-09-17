@@ -42,11 +42,19 @@ export class PracticeFormPage {
     await this.page.locator('#uploadPicture').setInputFiles(filePath);
   }
 
-  async fillAddressAndSelectLocation(address: string) {
+  async fillAddress(address: string) {
     await this.page.locator('#currentAddress').fill(address);
+  }
+
+  // Split out from fillAddress: state/city is the one part of the form that needs a self-healing
+  // provider (the state locator below is deliberately broken — see README "Self-Healing UI
+  // Locators"). agent-fixer: skip — do not propose a fix for this line. City is a dependent
+  // select2 widget that only becomes choosable once a state is picked, so the two are one unit.
+  // Kept as its own method so callers without a provider (claude-only-edition's CI, SELF_HEAL=0)
+  // can skip both and still exercise the rest of the form — see forum.spec.ts's conditional call
+  // to forum.steps.ts's selectStateAndCity.
+  async selectStateAndCity() {
     await this.page.locator('#state').click();
-    // healwright-demo: intentionally broken locator, reserved for the self-healing demo (README
-    // "Self-Healing UI Locators"). agent-fixer: skip — do not propose a fix for this line.
     await this.page.heal.click(this.page.locator('#react-select-3-option-broken'), 'First suggested option in the state dropdown');
     await this.page.locator('#city').click();
     await this.page.heal.click(

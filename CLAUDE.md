@@ -1,9 +1,15 @@
 # CLAUDE.md — index
 
 AI-native QA framework: Playwright/TypeScript tests (REST, GraphQL, UI) plus a set of AI modules
-around them (self-healing, observability, fixers, triage, test generation). Full feature
-descriptions live in `README.md` — this file is routing only, for a cold agent session. Do not
-duplicate README content here; link to its section (`README.md#N`) instead.
+around them (self-healing, observability, fixers, test generation). Full feature descriptions
+live in `README.md` — this file is routing only, for a cold agent session. Do not duplicate
+README content here; link to its section (`README.md#N`) instead.
+
+**claude-only-edition**: this branch runs on the Claude Code CLI subscription only — no Gemini
+key, no paid Anthropic API key, no other subscription. Self-healing uses a local Ollama model
+(`AI_PROVIDER=local`) instead of a cloud provider. Jira-driven red-test triage and the old
+Gemini-backed `pr-review`/`jira-triage`/AI-fallback CI gates were removed rather than ported —
+see README's "claude-only-edition" note for what changed and why.
 
 ## Where things live
 
@@ -17,25 +23,25 @@ duplicate README content here; link to its section (`README.md#N`) instead.
 | Agent-Fixer (locator fix → PR)                                                     | `src/agent-fixer/`                                                                                                                                                         | README §3                   |
 | Failure Analysis (cause grouping, retry verdicts, flaky-test quarantine detection) | `src/failure-analysis/` (incl. `quarantine.ts`, `check-quarantine-ttl.ts`)                                                                                                 | README §4                   |
 | Affected-test selection                                                            | `src/test-selection/`                                                                                                                                                      | README §5                   |
-| Jira red-test triage                                                               | `src/jira-triage/`                                                                                                                                                         | README §6                   |
-| Self-evolving test suite (new edge-case test → PR)                                 | `src/test-evolution/`                                                                                                                                                      | README §7                   |
-| Goal-based tests (prose goal → agent-written driver)                               | `src/goal-evolution/` (`goal.ts`, `goals/*.ts`, `run.ts`, `propose-driver.ts`)                                                                                             | README §8                   |
-| Page-knowledge cache (per-page DOM/behavior notes)                                 | `docs/page-knowledge/*.md` — currently `text-box.md`, `check-box.md`, `buttons.md`, `book-store-register.md`, `book-store-list.md`, `book-store-login.md`, `web-tables.md` | README §9                   |
-| AI personas / model tiers                                                          | `ai-agents/personas/*.md` (system prompts), `ai-agents/profiles/{cheap,paranoid}.env`, `src/ai-agents/cli-fallback.ts`, `gemini-text.ts`                                   | README §10                  |
-| PR review gate (whole-diff review, blocks merge)                                   | `src/ai-agents/pr-reviewer.ts`, `ai-agents/personas/pr-reviewer.md`, shared verdict grammar in `src/ai-agents/review-verdict.ts`, `pr-review` job in `regression.yml`      | README §11                  |
+| Self-evolving test suite (new edge-case test → PR)                                 | `src/test-evolution/`                                                                                                                                                      | README §6                   |
+| Goal-based tests (prose goal → agent-written driver)                               | `src/goal-evolution/` (`goal.ts`, `goals/*.ts`, `run.ts`, `propose-driver.ts`)                                                                                             | README §7                   |
+| Page-knowledge cache (per-page DOM/behavior notes)                                 | `docs/page-knowledge/*.md` — currently `text-box.md`, `check-box.md`, `buttons.md`, `book-store-register.md`, `book-store-list.md`, `book-store-login.md`, `web-tables.md` | README §8                   |
+| AI personas / model tiers                                                          | `ai-agents/personas/*.md` (system prompts), `ai-agents/profiles/{cheap,paranoid}.env`, `src/ai-agents/cli-fallback.ts`                                                     | README §9                   |
+| PR review (whole-diff review, local pre-push step, not a CI gate)                  | `src/ai-agents/pr-reviewer.ts`, `ai-agents/personas/pr-reviewer.md`, shared verdict grammar in `src/ai-agents/review-verdict.ts`                                           | README §10                  |
 | Env vars / config                                                                  | `src/core/config.ts`, `src/core/global-setup.ts` (fails fast on missing vars), `.env.example` (full inventory)                                                             | —                           |
 | CI pipeline                                                                        | `.github/workflows/regression.yml`                                                                                                                                         | —                           |
 | Secret scanning (blocking gate)                                                    | `secret-scan` job in `regression.yml` (gitleaks)                                                                                                                           | —                           |
 
-Personas on disk (9): `qa-analyst`, `test-developer`, `locator-medic`, `reviewer-tests`,
-`pr-reviewer`, `goal-solver` (extends `test-developer`), `healing-classifier`, `retry-dispatcher`,
-`reporter` (docs-only convention, not loaded at runtime). All but `reporter` are read at runtime —
-`ls ai-agents/personas/` is the source of truth if this line goes stale.
+Personas on disk (6): `test-developer`, `locator-medic`, `reviewer-tests`, `pr-reviewer`,
+`goal-solver` (extends `test-developer`), `reporter` (docs-only convention, not loaded at runtime).
+All but `reporter` are read at runtime — `ls ai-agents/personas/` is the source of truth if this
+line goes stale. (`qa-analyst`, `healing-classifier`, `retry-dispatcher` were removed along with
+their Gemini-backed modules — see the claude-only-edition note above.)
 
 Two distinct review personas, easy to confuse: `reviewer-tests` judges ONE generated test file
-inside `test-evolution` and is advisory; `pr-reviewer` judges a WHOLE PR diff and blocks the merge
-on a `major` finding. They share one output grammar (`src/ai-agents/review-verdict.ts`) — extend
-that module, never fork a second copy of the parser.
+inside `test-evolution` and is advisory; `pr-reviewer` judges a WHOLE PR diff and, when run,
+recommends blocking on a `major` finding. They share one output grammar
+(`src/ai-agents/review-verdict.ts`) — extend that module, never fork a second copy of the parser.
 
 ## Key npm scripts
 
@@ -52,9 +58,7 @@ npm run failure-analysis       # cause grouping + retry verdicts + quarantine-ca
 npm run check-quarantine-ttl   # CI gate: fails if a quarantine.json entry is past its TTL
 npm run test-evolution         # AI proposes + runs + PRs one new edge-case test
 npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user | book-store-remove-books
-npm run jira-triage [observability-run-file]   # defaults to latest .observability/run-*.jsonl
-npm run qa-analyst -- <requirement-file>
-npm run pr-review -- <pr-number>       # whole-diff PR review; exit 1 only on a `major` finding
+npm run pr-review -- <pr-number>       # whole-diff PR review; local step, run before pushing/merging
 ```
 
 ## Critical rules
@@ -73,11 +77,12 @@ npm run pr-review -- <pr-number>       # whole-diff PR review; exit 1 only on a 
 4. **Nothing hardcoded.** All credentials/keys/tokens come from `.env` (gitignored); `.env.example`
    lists every variable the project reads. `src/core/global-setup.ts` fails fast with a clear
    message on a missing required var rather than silently falling back.
-5. **An AI review gate never fails on its own infrastructure.** `pr-reviewer` exits non-zero ONLY
-   on a `major` finding; a missing key, an exhausted quota or an unparseable reply exit 0 with a
-   loud "review unavailable" comment. Those are facts about the infrastructure, not the PR — and a
-   blocking check that goes red for reasons the author can't act on is one people learn to ignore.
-   Keep that split if you touch `src/ai-agents/pr-reviewer.ts`.
+5. **An AI review never fails on its own infrastructure.** `pr-reviewer` exits non-zero ONLY on a
+   `major` finding; the `claude` CLI not being installed/authenticated or an unparseable reply
+   exit 0 with a loud "review unavailable" comment. Those are facts about the infrastructure, not
+   the PR — and a check that goes red for reasons the author can't act on is one people learn to
+   ignore (or bypass with `--no-verify`, if this is ever wired into a pre-push hook). Keep that
+   split if you touch `src/ai-agents/pr-reviewer.ts`.
 6. **Check `docs/page-knowledge/<page>.md` before opening a browser** for a new UI ticket. Write
    the page object/test from the file if it already answers what's needed; update the file in the
    same commit if you had to explore live.

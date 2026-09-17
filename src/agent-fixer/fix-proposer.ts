@@ -4,9 +4,10 @@
 // recovery, or healing itself failed to find a replacement.
 //
 // Unlike the cache layer, this is a real agentic call, run under the locator-medic persona
-// (ai-agents/personas/locator-medic.md) through the same shared 3-tier CLI fallback
-// (src/ai-agents/cli-fallback.ts) test-developer uses — Claude CLI primary -> Gemini primary
-// -> Gemini fallback model, no separate paid credential for any tier.
+// (ai-agents/personas/locator-medic.md) through the same Claude CLI call
+// (src/ai-agents/cli-fallback.ts) test-developer uses — the existing claude CLI subscription
+// session, no separate paid credential. claude-only-edition: no fallback tier — if this fails,
+// it fails loud (see cli-fallback.ts).
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -38,12 +39,10 @@ export function proposeFixWithAI(selector: string, contextName: string, targetFi
   const prompt = `${persona}\n\n---\n\n## Task\n\n${task}`;
 
   // agent-fixer's fallback needs shell access for `npx tsc --noEmit`, beyond cli-fallback's
-  // DEFAULT_PROFILE — pass an explicit profile that adds it for the Gemini tiers only (the
-  // Claude tier already includes Bash implicitly via its own allowedTools).
+  // DEFAULT_PROFILE.
   runAgenticEdit(
     prompt,
     {
-      geminiAllowedTools: 'read_file,write_file,edit,glob,grep,run_shell_command',
       claudeAllowedTools: 'Read,Write,Edit,Glob,Grep,Bash(npx tsc --noEmit)',
       claudePermissionMode: 'acceptEdits',
     },

@@ -126,31 +126,24 @@ test.describe('buildPrompt', () => {
   });
 });
 
-// Guards the same class of drift safety-gates.spec.ts guards for agent-fixer's branch prefixes: the
-// gate is only real if the workflow actually calls it AND the autonomous merge path waits for it.
-// Both facts live in YAML that nothing else type-checks, so they are asserted against the real file.
+// claude-only-edition: pr-review is no longer a CI job (see pr-reviewer.ts's header) — it runs the
+// `claude` CLI, which only authenticates on a developer's own machine, not a GitHub-hosted runner.
+// This just guards that it was actually removed from the workflow rather than left half-wired.
 test.describe('regression.yml wiring', () => {
   const workflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/regression.yml'), 'utf-8');
 
-  test('defines a pr-review job that runs the reviewer', () => {
-    expect(workflow).toContain('pr-review:');
-    expect(workflow).toContain('npm run pr-review');
+  test('does not define a pr-review CI job', () => {
+    // Checks for the job DEFINITION specifically (2-space indented job id, as every job in this
+    // file's `jobs:` block is) — not just the substring, which also legitimately appears in
+    // explanatory comments about why the job was removed.
+    expect(workflow).not.toMatch(/^ {2}pr-review:$/m);
   });
 
-  // The one path that merges to master with no human is agent-fixer's auto-merge. If it does not
-  // wait for pr-review, the gate does not cover the case it exists for.
-  test('agent-fixer auto-merge waits for pr-review', () => {
+  // agent-fixer's auto-merge (the one path that merges to master with no human) must not reference
+  // a job that no longer exists — a dangling `needs` entry would deadlock the merge forever.
+  test('agent-fixer auto-merge does not wait on the removed pr-review job', () => {
     const job = workflow.slice(workflow.indexOf('agent-fixer-verify-and-merge:'));
     const needs = job.slice(job.indexOf('needs:'), job.indexOf('runs-on:', job.indexOf('needs:')));
-    expect(needs).toContain('pr-review');
-  });
-
-  // A hyphenated job id is NOT reachable as `needs.pr-review.result` in a GitHub Actions
-  // expression — that parses as a subtraction, silently evaluating to something that is never
-  // 'success', which would deadlock the auto-merge instead of gating it. Bracket notation is
-  // mandatory, and nothing else in this repo type-checks workflow expressions.
-  test('gates the auto-merge on pr-review via bracket notation, not hyphen property access', () => {
-    expect(workflow).toContain("needs['pr-review'].result == 'success'");
-    expect(workflow).not.toContain('needs.pr-review');
+    expect(needs).not.toContain('pr-review');
   });
 });
