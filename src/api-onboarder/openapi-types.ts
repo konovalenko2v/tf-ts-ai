@@ -22,10 +22,20 @@ export interface OpenApiParameter {
   schema?: OpenApiSchema;
 }
 
+// OpenAPI 3.x dropped Swagger 2.0's `in: 'body'` parameter — a request body is a sibling field on
+// the operation instead, keyed by media type. Only 'application/json' is read; a spec that only
+// offers XML/form-urlencoded bodies produces a client method with no typed body parameter, which
+// is a spec-coverage gap to notice in the generated file, not a crash.
+export interface OpenApiRequestBody {
+  required?: boolean;
+  content?: Record<string, { schema?: OpenApiSchema }>;
+}
+
 export interface OpenApiOperation {
   operationId?: string;
   summary?: string;
   parameters?: OpenApiParameter[];
+  requestBody?: OpenApiRequestBody;
   responses?: Record<string, { description?: string; schema?: OpenApiSchema }>;
 }
 
@@ -56,8 +66,16 @@ export function refName(ref: string): string {
   return ref.split('/').pop()!;
 }
 
+// OpenAPI 3.x commonly declares `servers[0].url` as a path relative to whatever host the spec
+// itself was served from (e.g. '/api/v3') rather than an absolute URL — used as-is, that produces
+// a client that can't reach the API at all. `fallbackHost` (the host the spec document was fetched
+// from) is what a relative server URL is actually relative to.
 export function resolveBaseUrl(doc: OpenApiDocument, fallbackHost: string): string {
-  if (doc.servers?.[0]?.url) return doc.servers[0].url;
+  const serverUrl = doc.servers?.[0]?.url;
+  if (serverUrl) {
+    const resolved = /^https?:\/\//.test(serverUrl) ? serverUrl : `https://${fallbackHost}${serverUrl}`;
+    return resolved.replace(/\/+$/, '');
+  }
   const scheme = doc.schemes?.[0] ?? 'https';
   const host = doc.host ?? fallbackHost;
   const basePath = doc.basePath ?? '';
