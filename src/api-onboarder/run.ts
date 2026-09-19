@@ -1,6 +1,6 @@
 // Entry point: point this at any OpenAPI/Swagger document URL and it onboards that API into the
 // suite — generates a client + types deterministically (no AI in that half, see generate-client.ts
-// / generate-types.ts), then has an AI agent write steps + a spec exercising them.
+// / generate-schema.ts), then has an AI agent write steps + a spec exercising them.
 //
 // Deliberately NOT modeled on src/test-evolution/run.ts's branch/PR pipeline: that script runs
 // unattended in CI and needs somewhere to deliver its output, so it owns its own git branch and
@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { fetchSpec } from './fetch-spec';
-import { generateTypesFile } from './generate-types';
+import { generateSchemaFile, generateTypesBarrel, emittableSchemaNames, supportsSchemaGeneration } from './generate-schema';
 import { generateClientFile } from './generate-client';
 import { resolveBaseUrl } from './openapi-types';
 import { proposeOnboarding } from './propose-onboarding';
@@ -87,6 +87,7 @@ async function main(): Promise<void> {
   const baseUrl = resolveBaseUrl(doc, new URL(specUrl).host);
 
   const outDir = path.join(OUTPUT_ROOT, dirName);
+  const schemaFile = path.join(outDir, 'schema.ts');
   const typesFile = path.join(outDir, 'types.ts');
   const clientFile = path.join(outDir, `${dirName}.client.ts`);
   const stepsFile = path.join(outDir, `${dirName}.steps.ts`);
@@ -99,10 +100,27 @@ async function main(): Promise<void> {
   }
 
   fs.mkdirSync(outDir, { recursive: true });
-  fs.writeFileSync(typesFile, generateTypesFile(doc));
-  fs.writeFileSync(clientFile, generateClientFile(doc, className, baseUrl));
-  execFileSync('npx', ['prettier', '--write', typesFile, clientFile], { stdio: 'inherit' });
-  process.stderr.write(`[api-onboarder] generated ${typesFile} and ${clientFile} (${Object.keys(doc.paths).length} paths)\n`);
+
+  // openapi-typescript (a maintained library, not this repo's own parser) only understands
+  // OpenAPI 3.x — a Swagger 2.0 doc still gets a working client (see generate-client.ts's
+  // Swagger-2.0/OpenAPI-3 dual-path handling), just without named types: every $ref falls back to
+  // `unknown` there. That's a coverage gap to say out loud, not a silent downgrade.
+  const generatedFiles = [clientFile];
+  let availableTypeNames = new Set<string>();
+  if (supportsSchemaGeneration(doc)) {
+    fs.writeFileSync(schemaFile, await generateSchemaFile(doc));
+    fs.writeFileSync(typesFile, generateTypesBarrel(doc));
+    availableTypeNames = new Set(emittableSchemaNames(doc));
+    generatedFiles.unshift(typesFile, schemaFile);
+  } else {
+    process.stderr.write(
+      '[api-onboarder] this is a Swagger 2.0 document — openapi-typescript needs OpenAPI 3.x, so no schema.ts/types.ts is generated; the client will use `unknown` for every $ref type instead of a named one\n',
+    );
+  }
+
+  fs.writeFileSync(clientFile, generateClientFile(doc, className, baseUrl, availableTypeNames));
+  execFileSync('npx', ['prettier', '--write', ...generatedFiles], { stdio: 'inherit' });
+  process.stderr.write(`[api-onboarder] generated ${generatedFiles.join(', ')} (${Object.keys(doc.paths).length} paths)\n`);
 
   const statusBefore = execFileSync('git', ['status', '--short']).toString();
 
@@ -198,7 +216,7 @@ async function main(): Promise<void> {
   }
 
   process.stderr.write(
-    `[api-onboarder] done — ${apiName} onboarded at ${outDir}/ (${typesFile}, ${clientFile}, ${stepsFile}, ${specFile})\n`,
+    `[api-onboarder] done — ${apiName} onboarded at ${outDir}/ (${[...generatedFiles, stepsFile, specFile].join(', ')})\n`,
   );
 }
 
