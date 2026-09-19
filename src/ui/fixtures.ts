@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { test as base, Page } from '@playwright/test';
+import { test as base, Page, TestInfo } from '@playwright/test';
 import { withHealing, HealError, HealPage, HealMethods } from 'healwright';
 import { tag } from 'allure-js-commons';
 import { readHealEventsRaw, renderStrategy } from '../failure-analysis/heal-events';
@@ -38,43 +38,76 @@ function buildHealPage(page: Page, model: string | undefined): HealPage {
 // rather than returning a copy.
 type HealFn = (...args: unknown[]) => unknown;
 
-function withModelFallback(page: Page, healPage: HealPage): HealPage {
-  if (!FALLBACK_MODEL) return healPage;
+// Module-scoped (shared across tests in a worker), not reset per test — attachment names only
+// need to be unique and ordered within a test, and a running counter guarantees both regardless.
+let healScreenshotCounter = 0;
 
+async function attachHealScreenshot(page: Page, testInfo: TestInfo, label: string): Promise<void> {
+  try {
+    const body = await page.screenshot();
+    await testInfo.attach(label, { body, contentType: 'image/png' });
+  } catch (err) {
+    // A failed screenshot (e.g. page already navigating away) must never fail the heal call
+    // itself — this is a diagnostic nicety, not part of the test's own assertions.
+    process.stderr.write(`[healwright] could not attach heal screenshot: ${(err as Error).message}\n`);
+  }
+}
+
+// Fallback-switching and screenshotting are combined into one wrapper (rather than two composed
+// ones) because buildHealPage() below replaces `page.heal` wholesale — healPage === page, so a
+// wrapper built by wrapping today's `healPage.heal` would be discarded the moment the fallback
+// path swaps the model, silently losing the screenshot behavior for the rest of the test. This
+// wrapper re-asserts itself onto `healPage.heal` right after that swap, so screenshots keep
+// working, and keeps its own `fallbackTarget` reference to the raw post-swap methods to dispatch
+// through — dispatching through `healPage.heal` after re-asserting would call back into `wrapped`
+// itself and recurse forever.
+function wrapHealMethods(page: Page, healPage: HealPage, testInfo: TestInfo): void {
   const original = { ...healPage.heal } as unknown as Record<string, HealFn>;
   const methodNames = Object.keys(original);
   if (methodNames.length === 0) {
-    throw new Error('[healwright] heal methods were not enumerable — fallback wiring is broken');
+    throw new Error('[healwright] heal methods were not enumerable — heal wrapping is broken');
   }
 
   let switchedToFallback = false;
+  let fallbackTarget: Record<string, HealFn> | undefined;
   const wrapped: Record<string, HealFn> = {};
   for (const key of methodNames) {
-    const fn = original[key];
-    if (typeof fn !== 'function') continue;
+    const primaryFn = original[key];
+    if (typeof primaryFn !== 'function') continue;
     wrapped[key] = async (...args: unknown[]) => {
-      const currentHeal = healPage.heal as unknown as Record<string, HealFn>;
-      // Once switched, every call goes straight through the current page.heal[key] — never the
-      // `fn` closed over above, which is permanently bound to the primary model's provider.
+      // Screenshot the state BEFORE the call too — for a real (non-cached) heal this is the
+      // broken-locator moment the healing is actually reacting to, and by the time the call
+      // resolves the DOM has already moved past it.
+      healScreenshotCounter += 1;
+      const n = healScreenshotCounter;
+      await attachHealScreenshot(page, testInfo, `heal-${n}-${key}-before`);
+
+      let result: unknown;
       if (switchedToFallback) {
-        return await currentHeal[key].apply(healPage.heal, args);
+        // Dispatch through the raw post-swap methods, never healPage.heal — that's `wrapped`
+        // again (re-asserted below), and calling it here would recurse forever.
+        result = await fallbackTarget![key].apply(fallbackTarget, args);
+      } else {
+        try {
+          result = await primaryFn.apply(healPage.heal, args);
+        } catch (err) {
+          if (!FALLBACK_MODEL || !isRetryableAiError(err)) throw err;
+          switchedToFallback = true;
+          process.stderr.write(
+            `[healwright] ${PRIMARY_MODEL ?? 'default model'} failed (quota or transient unavailability) — switching to fallback model ${FALLBACK_MODEL} for the rest of this test\n`,
+          );
+          buildHealPage(page, FALLBACK_MODEL);
+          fallbackTarget = { ...healPage.heal } as unknown as Record<string, HealFn>;
+          healPage.heal = wrapped as unknown as HealMethods;
+          result = await fallbackTarget[key].call(fallbackTarget, ...args);
+        }
       }
-      try {
-        return await fn.apply(healPage.heal, args);
-      } catch (err) {
-        if (!isRetryableAiError(err)) throw err;
-        switchedToFallback = true;
-        process.stderr.write(
-          `[healwright] ${PRIMARY_MODEL ?? 'default model'} failed (quota or transient unavailability) — switching to fallback model ${FALLBACK_MODEL} for the rest of this test\n`,
-        );
-        buildHealPage(page, FALLBACK_MODEL);
-        const fallbackHeal = healPage.heal as unknown as Record<string, HealFn>;
-        return await fallbackHeal[key].apply(healPage.heal, args);
-      }
+
+      await attachHealScreenshot(page, testInfo, `heal-${n}-${key}-after`);
+      return result;
     };
   }
   healPage.heal = wrapped as unknown as HealMethods;
-  return healPage;
 }
 
 function countLines(file: string): number {
@@ -91,7 +124,8 @@ export const test = base.extend<{ page: HealPage }>({
     const healPage = buildHealPage(page, PRIMARY_MODEL);
     const linesBefore = countLines(HEAL_EVENTS_FILE);
 
-    await use(withModelFallback(page, healPage));
+    wrapHealMethods(page, healPage, testInfo);
+    await use(healPage);
 
     const newEvents = readHealEventsRaw(HEAL_EVENTS_FILE)
       .slice(linesBefore)

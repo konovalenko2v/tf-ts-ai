@@ -1,4 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
+import * as dotenv from 'dotenv';
+
+// The reporter array below (specifically the RP_ENDPOINT-gated ReportPortal entry) is built once,
+// here in the runner process, when this config module is first evaluated — before any test file
+// (and therefore before src/core/config.ts's own dotenv.config()) has run. Without loading .env
+// here too, RP_ENDPOINT reads as undefined at config-eval time even though it's set in .env, and
+// the ReportPortal reporter silently never gets added — no error, just zero requests to the RP API.
+dotenv.config();
 
 export default defineConfig({
   testDir: './tests',
@@ -38,6 +46,11 @@ export default defineConfig({
               endpoint: process.env.RP_ENDPOINT,
               project: process.env.RP_PROJECT,
               launch: process.env.RP_LAUNCH ?? 'tf-ts-ai',
+              // 'DEBUG' (vs the client's own 'DEFAULT') keeps ad-hoc local runs — a demo, a
+              // one-off investigation — out of the launch history a real regression run reports
+              // against, without needing a second RP project. Unset env falls through to the RP
+              // client's own default ('DEFAULT'), so this is opt-in and changes nothing for CI.
+              mode: process.env.RP_LAUNCH_MODE,
               attributes: [{ key: 'project', value: process.env.RP_PROJECT ?? 'tf-ts-ai' }],
               description: 'tf-ts-ai regression run',
               // Set by src/reportportal/start-launch.ts across a sharded CI run (regression.yml's
