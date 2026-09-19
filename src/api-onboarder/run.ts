@@ -106,7 +106,7 @@ async function main(): Promise<void> {
   // Swagger-2.0/OpenAPI-3 dual-path handling), just without named types: every $ref falls back to
   // `unknown` there. That's a coverage gap to say out loud, not a silent downgrade.
   const generatedFiles = [clientFile];
-  let availableTypeNames: Set<string> | undefined;
+  let availableTypeNames = new Set<string>();
   if (supportsSchemaGeneration(doc)) {
     fs.writeFileSync(schemaFile, await generateSchemaFile(doc));
     fs.writeFileSync(typesFile, generateTypesBarrel(doc));

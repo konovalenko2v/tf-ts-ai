@@ -11,8 +11,8 @@ function paramsByLocation(params: OpenApiParameter[] | undefined, loc: OpenApiPa
 
 // OpenAPI 3.x nests a parameter's type under `schema.type`; Swagger 2.0 puts it directly on the
 // parameter as `type`. Both are read so this keeps working against either spec version.
-function tsParamType(param: OpenApiParameter): string {
-  if (param.schema?.$ref) return refName(param.schema.$ref);
+function tsParamType(param: OpenApiParameter, availableTypeNames: Set<string>): string {
+  if (param.schema?.$ref) return safeTypeName(param.schema.$ref, availableTypeNames);
   const rawType = param.schema?.type ?? param.type;
   if (rawType === 'integer' || rawType === 'number') return 'number';
   if (rawType === 'boolean') return 'boolean';
@@ -42,17 +42,17 @@ function methodName(operationId: string | undefined, method: OpenApiMethod, urlP
 
 // A $ref name is only safe to use as a type if it actually exists as a named export in the
 // generated types barrel — a schema key that isn't a valid TS identifier (see
-// generate-schema.ts's VALID_IDENTIFIER filter) never gets an alias there. Falling back to
-// `unknown` for a filtered-out name avoids emitting an import for a type that doesn't exist,
-// which `tsc` would only catch after burning a full AI-onboarding attempt to discover.
-function safeTypeName(refTarget: string | undefined, availableTypeNames: Set<string> | undefined): string {
+// generate-schema.ts's VALID_IDENTIFIER filter) never gets an alias there, and a Swagger 2.0 doc
+// has no barrel generated at all (run.ts passes an empty set). Falling back to `unknown` for a
+// name outside the available set avoids emitting an import for a type that doesn't exist, which
+// `tsc` would only catch after burning a full AI-onboarding attempt to discover.
+function safeTypeName(refTarget: string | undefined, availableTypeNames: Set<string>): string {
   if (!refTarget) return 'unknown';
   const name = refName(refTarget);
-  if (availableTypeNames && !availableTypeNames.has(name)) return 'unknown';
-  return name;
+  return availableTypeNames.has(name) ? name : 'unknown';
 }
 
-function renderMethod(urlPath: string, method: OpenApiMethod, op: OpenApiOperation, availableTypeNames: Set<string> | undefined): string {
+function renderMethod(urlPath: string, method: OpenApiMethod, op: OpenApiOperation, availableTypeNames: Set<string>): string {
   const pathParams = paramsByLocation(op.parameters, 'path');
   const queryParams = paramsByLocation(op.parameters, 'query');
   // Swagger 2.0 represents a body as an `in: 'body'` parameter; OpenAPI 3.x moved it to the
@@ -68,10 +68,10 @@ function renderMethod(urlPath: string, method: OpenApiMethod, op: OpenApiOperati
   // trailing block (optional query params) can contain a `?`, regardless of the spec's own
   // parameter order or whether a body param (always required here) follows them.
   const args = [
-    ...pathParams.map((p) => `${p.name}: ${tsParamType(p)}`),
-    ...queryParams.filter((p) => p.required).map((p) => `${p.name}: ${tsParamType(p)}`),
+    ...pathParams.map((p) => `${p.name}: ${tsParamType(p, availableTypeNames)}`),
+    ...queryParams.filter((p) => p.required).map((p) => `${p.name}: ${tsParamType(p, availableTypeNames)}`),
     ...(hasBody ? [`body: ${bodyType}`] : []),
-    ...queryParams.filter((p) => !p.required).map((p) => `${p.name}?: ${tsParamType(p)}`),
+    ...queryParams.filter((p) => !p.required).map((p) => `${p.name}?: ${tsParamType(p, availableTypeNames)}`),
   ].join(', ');
 
   // Template-literal path with {param} substituted directly — Swagger/OpenAPI path templates
@@ -104,9 +104,10 @@ function renderMethod(urlPath: string, method: OpenApiMethod, op: OpenApiOperati
 }
 
 // `availableTypeNames` is the set of names that actually exist in the generated types barrel
-// (generate-schema.ts's emittableSchemaNames) — omit it for a Swagger 2.0 doc, where no barrel is
-// generated at all and every $ref name is used as-is (the pre-openapi-typescript behavior).
-export function generateClientFile(doc: OpenApiDocument, className: string, baseUrl: string, availableTypeNames?: Set<string>): string {
+// (generate-schema.ts's emittableSchemaNames) — a Swagger 2.0 doc gets no barrel generated at all
+// (run.ts passes an empty set), so every $ref there falls back to `unknown` instead of importing
+// from a './types' module that was never written.
+export function generateClientFile(doc: OpenApiDocument, className: string, baseUrl: string, availableTypeNames: Set<string>): string {
   const methods: string[] = [];
   for (const [urlPath, pathItem] of Object.entries(doc.paths)) {
     for (const method of ['get', 'post', 'put', 'patch', 'delete'] as OpenApiMethod[]) {
@@ -124,11 +125,14 @@ export function generateClientFile(doc: OpenApiDocument, className: string, base
       for (const p of op.parameters ?? []) {
         if (p.schema?.$ref) typeNames.add(refName(p.schema.$ref));
       }
-      const bodyRef = requestBodyRef(op);
+      // requestBodyRef covers OpenAPI 3.x's sibling `requestBody` field; Swagger 2.0 represents
+      // the same thing as an `in: 'body'` parameter instead (see renderMethod's swagger2BodyParam).
+      const swagger2BodyRef = paramsByLocation(op.parameters, 'body')[0]?.schema?.$ref;
+      const bodyRef = requestBodyRef(op) ?? swagger2BodyRef;
       if (bodyRef) typeNames.add(refName(bodyRef));
     }
   }
-  const importedTypeNames = availableTypeNames ? [...typeNames].filter((name) => availableTypeNames.has(name)) : [...typeNames];
+  const importedTypeNames = [...typeNames].filter((name) => availableTypeNames.has(name));
   const typeImport = importedTypeNames.length > 0 ? `import { ${importedTypeNames.sort().join(', ')} } from './types';\n` : '';
 
   return [

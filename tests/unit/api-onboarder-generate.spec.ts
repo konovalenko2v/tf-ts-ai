@@ -157,7 +157,7 @@ test.describe('generateTypesBarrel', () => {
 });
 
 test.describe('generateClientFile', () => {
-  const output = generateClientFile(SAMPLE_DOC, 'WidgetClient', 'https://example.com/v1');
+  const output = generateClientFile(SAMPLE_DOC, 'WidgetClient', 'https://example.com/v1', new Set(['Widget']));
 
   test('names each method after its operationId', () => {
     expect(output).toContain('async listWidgets(');
@@ -188,7 +188,7 @@ test.describe('generateClientFile', () => {
         },
       },
     };
-    const requiredOutput = generateClientFile(doc, 'WidgetClient', 'https://example.com/v1');
+    const requiredOutput = generateClientFile(doc, 'WidgetClient', 'https://example.com/v1', new Set(['Widget']));
     expect(requiredOutput).toContain('params: { status }');
     expect(requiredOutput).not.toContain('const params: Record<string, string | number | boolean> = {};');
   });
@@ -208,7 +208,7 @@ test.describe('generateClientFile', () => {
 });
 
 test.describe('generateClientFile — OpenAPI 3.x dual-path handling', () => {
-  const output = generateClientFile(OPENAPI3_DOC, 'WidgetClient', 'https://example.com/v1');
+  const output = generateClientFile(OPENAPI3_DOC, 'WidgetClient', 'https://example.com/v1', new Set(['Widget']));
 
   test('reads a request body from the requestBody field, not an in:"body" parameter', () => {
     expect(output).toContain('async createWidget(body: Widget)');
@@ -233,7 +233,7 @@ test.describe('generateClientFile — OpenAPI 3.x dual-path handling', () => {
         },
       },
     };
-    const orderedOutput = generateClientFile(doc, 'WidgetClient', 'https://example.com/v1');
+    const orderedOutput = generateClientFile(doc, 'WidgetClient', 'https://example.com/v1', new Set(['Widget']));
     expect(orderedOutput).toContain('async createWidget(body: Widget, dryRun?: boolean)');
   });
 });
@@ -249,5 +249,11 @@ test.describe('generateClientFile — availableTypeNames filtering', () => {
     const output = generateClientFile(OPENAPI3_DOC, 'WidgetClient', 'https://example.com/v1', new Set([]));
     expect(output).not.toContain('import { Widget }');
     expect(output).toContain('body: unknown');
+  });
+
+  test('a Swagger 2.0 doc (no barrel generated — run.ts passes an empty set) never imports from ./types, even for its in:"body" $ref', () => {
+    const output = generateClientFile(SAMPLE_DOC, 'WidgetClient', 'https://example.com/v1', new Set());
+    expect(output).not.toContain("from './types'");
+    expect(output).toContain('async createWidget(body: unknown)');
   });
 });
