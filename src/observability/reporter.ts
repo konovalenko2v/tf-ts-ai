@@ -46,6 +46,7 @@ export default class ObservabilityReporter implements Reporter {
   private lastUrlPath = new Map<string, string>(); // keyed by test.id
   private recoveredBuffer = new Map<TestStep, RecoveredError[]>();
   private stepIndex = new Map<string, number>(); // keyed by test.id
+  private recoveredStepIndex = new Map<string, number>(); // keyed by test.id
   private totals = { passed: 0, failed: 0, skipped: 0, flaky: 0 };
 
   onBegin(config: FullConfig, suite: Suite): void {
@@ -119,6 +120,9 @@ export default class ObservabilityReporter implements Reporter {
   ): void {
     const idx = (this.stepIndex.get(test.id) ?? 0) + 1;
     this.stepIndex.set(test.id, idx);
+    if (outcome === 'passed_with_recovery') {
+      this.recoveredStepIndex.set(test.id, (this.recoveredStepIndex.get(test.id) ?? 0) + 1);
+    }
     this.write({
       type: 'step',
       runId: this.runId,
@@ -140,6 +144,8 @@ export default class ObservabilityReporter implements Reporter {
   onTestEnd(test: TestCase, result: TestResult): void {
     const stepCount = this.stepIndex.get(test.id) ?? 0;
     this.stepIndex.delete(test.id);
+    const recoveredStepCount = this.recoveredStepIndex.get(test.id) ?? 0;
+    this.recoveredStepIndex.delete(test.id);
     this.lastUrlPath.delete(test.id);
 
     switch (result.status) {
@@ -168,7 +174,7 @@ export default class ObservabilityReporter implements Reporter {
       retry: result.retry,
       durationMs: result.duration,
       stepCount,
-      recoveredStepCount: 0,
+      recoveredStepCount,
       error: result.errors[0] ? sanitizeError(result.errors[0]) : undefined,
       artifacts: result.attachments
         .filter((a) => a.path)
