@@ -24,7 +24,8 @@ self-repair, test selection, and triage.
 | 10  | [AI Agent Personas](#10-ai-agent-personas)                    | 🟡 ~80% | Standardized personas (test-developer, locator-medic, reviewer-tests, qa-analyst, goal-solver) with a 4-tier CLI fallback (Claude + 3 Gemini models, optionally on separate API keys) and a separate review-tier model                                                              | One place to read/edit what each AI role is instructed to do, instead of an inline prompt string buried in each module — and a second, differently-modeled review gate before a generated test ships                                                                                |
 | 11  | [Retry Verdicts](#4-failure-analysis)                         | 🟢 100% | Names why each failure cause is or isn't worth retrying; the AI dispatcher adds a categorised advisory verdict for causes the rule-based table can't name; a missing credential is caught before any retry is spent and `maxFailures` aborts the run on a genuinely unfixable cause | Makes retry cost visible and acts on the two cases that are actually reachable in Playwright — a true per-test dynamic budget isn't (see "Not yet built")                                                                                                                           |
 | 12  | [PR Review Gate](#11-pr-review-gate)                          | 🟡 ~80% | Reviews every PR's full diff against this repo's own hard rules, blocks the merge on a `major` finding                                                                                                                                                                              | The only check that reads a change as a _whole_ rather than running it — and the only thing standing between agent-fixer's autonomous auto-merge and `master`. Advisory for a human clicking merge until branch protection is enabled by hand (see §11)                             |
-| 13  | Intent-Based Testing + **draft** PR on a jira-triage verdict  |  ⚪ 0%  | Not built — jira-triage stops at the verdict, no fix generation. If built: draft PR only, never auto-merge                                                                                                                                                                          | Would close the loop #6 opens: once triage confirms "this test is just outdated," propose the updated test instead of leaving a human to rewrite it — but an AI that edits a failing test until it passes is a machine for producing green meaningless tests, so a human must merge |
+| 13  | [API Onboarding](#12-api-onboarding)                          | 🟡 demo | Point it at any OpenAPI/Swagger URL: generates a typed client deterministically, then an AI writes steps + a spec exercising it, verified stable 3x before being proposed                                                                                                           | Turns "we need to test this API" from a manual client-writing exercise into a one-command run — human-invoked today, not CI-wired, and a Swagger 2.0 source falls back to `unknown` types instead of named ones                                                                     |
+| 14  | Intent-Based Testing + **draft** PR on a jira-triage verdict  |  ⚪ 0%  | Not built — jira-triage stops at the verdict, no fix generation. If built: draft PR only, never auto-merge                                                                                                                                                                          | Would close the loop #6 opens: once triage confirms "this test is just outdated," propose the updated test instead of leaving a human to rewrite it — but an AI that edits a failing test until it passes is a machine for producing green meaningless tests, so a human must merge |
 
 🟢 built and wired into CI · 🟡 built, partially wired or with a known gap · ⚪ not built yet
 
@@ -155,6 +156,7 @@ src/
 ├── jira-triage/            Jira context collection + bug/feature verdict (#6)
 ├── test-evolution/         AI-generated edge-case test, runs it, proposes a PR only if it passes (#7)
 ├── goal-evolution/         goal-in-plain-English → agent-written driver, judged by a fixed oracle (#8)
+├── api-onboarder/          OpenAPI/Swagger URL → generated client + types, AI-written steps/spec (#12)
 └── ai-agents/              shared CLI fallback, Gemini text/verdict helper, shared review-verdict
                             grammar, reviewer-tests, pr-reviewer (#11), qa-analyst (#10)
 tests/
@@ -166,7 +168,7 @@ docs/
 ai-agents/
 ├── personas/             system prompt per AI role — qa-analyst, test-developer, locator-medic,
 │                          reviewer-tests, goal-solver, healing-classifier, retry-dispatcher,
-│                          pr-reviewer (#11), reporter (docs-only convention) (#10)
+│                          pr-reviewer (#11), api-onboarder (#12), reporter (docs-only convention) (#10)
 └── profiles/              cheap.env (Claude Sonnet 5 primary, Gemini reserve) / paranoid.env (review tier) (#10)
 resources/
 ├── GQL/                  test GraphQL queries (*.json)
@@ -602,6 +604,8 @@ ai-agents/
 │   ├── goal-solver.md     plain-English goal → driver, never the oracle (#8)
 │   ├── healing-classifier.md  categorises why a locator needed healing (#4)
 │   ├── retry-dispatcher.md    advisory retry verdict for a failure cause (#4)
+│   ├── api-onboarder.md   writes steps + a spec against an already-generated client, never the
+│   │                      client/types themselves (#12)
 │   └── reporter.md        rendering convention for failure-analysis/test-evolution markdown —
 │                          read by a human, not loaded by any script at runtime
 └── profiles/             env files controlling which model tier a role runs on
@@ -627,6 +631,7 @@ ai-agents/
 | `pr-reviewer`        | `src/ai-agents/pr-reviewer.ts`             | `npm run pr-review -- <pr-number>`, and the `pr-review` CI job — reviews a whole PR diff, blocks the merge on a `major` finding (#11)                   |
 | `healing-classifier` | `src/failure-analysis/healing-classify.ts` | `npm run failure-analysis` — categorises why a locator needed healing (#4)                                                                              |
 | `retry-dispatcher`   | `src/failure-analysis/retry-dispatch.ts`   | `npm run failure-analysis` — advisory retry verdict for a cause the rule-based table can't name (#4)                                                    |
+| `api-onboarder`      | `src/api-onboarder/propose-onboarding.ts`  | `npm run api-onboarder -- <spec-url>` — writes steps + a spec against an already-generated, deterministic client (#12)                                  |
 
 > [!IMPORTANT]
 > `reviewer-tests` is **advisory, not a gate that blocks the PR** — a CLI/API failure here falls through to
@@ -724,6 +729,54 @@ from inside the repo.
 > nothing else has judged, and is the gate — but only its _verdict_ blocks, never its own failure to
 > run.
 
+## 12. API Onboarding
+
+```bash
+npm run api-onboarder -- <openapi-spec-url> [api-name]
+```
+
+`src/api-onboarder/` turns "we need to test this API" into a single command: point it at any OpenAPI/Swagger
+document URL and it generates a typed client deterministically, then has an AI write steps + a spec exercising
+that client, and only proposes the result once it's proven stable.
+
+**The deterministic half never calls an AI.** `openapi-types.ts` parses either spec shape (Swagger 2.0 or OpenAPI
+3.x — same dual-path handling as [Goal-Based Tests](#8-goal-based-tests)' `book-store-goal.spec.ts` client had to
+solve once, generalized here). For an OpenAPI 3.x document, `generate-schema.ts` shells out to `openapi-typescript`
+(a maintained third-party library — not a hand-rolled parser) to emit `schema.ts`, plus a `types.ts` barrel
+re-exporting each schema as a named type (`export type Widget = components['schemas']['Widget'];`).
+`generate-client.ts` then emits one client class method per operation, each typed against that barrel via a
+required `availableTypeNames: Set<string>` parameter — every `$ref` is checked against this set through one
+`safeTypeName()` choke point before being used as a type, rather than trusted blindly.
+
+**Swagger 2.0 gets a working client, not a blocked one.** `openapi-typescript` only understands OpenAPI 3.x, so
+for a Swagger 2.0 source `run.ts` skips schema/types generation entirely and passes an **empty** `availableTypeNames`
+set — `safeTypeName()` then falls back to `unknown` for every `$ref`, on both body and path/query parameter types,
+and the client never emits an import from a `./types` file that was never generated. This is a stated coverage
+gap, not a silent downgrade: `run.ts` prints it to the console at generation time.
+
+**The AI half writes steps + a spec, never the client.** The `api-onboarder` persona
+(`ai-agents/personas/api-onboarder.md`) is told to read the already-generated client and types and never modify
+them, then write a `*.steps.ts` file (one method per user-facing action, wrapped in `test.step()`, matching the
+existing `src/api/steps/*.steps.ts` pattern) and a 2-4 test spec covering one happy-path CRUD flow plus at least
+one edge case. Like every other shared-public-demo-API caller in this repo, each test must create its own
+uniquely-named data and delete it before finishing.
+
+**What `run.ts` verifies before proposing anything:**
+
+1. A `git status --short` diff before and after the AI call — a tracked file flipping to modified (not just a new
+   untracked file) aborts the run outright, since the persona was only ever allowed to create two new files.
+2. Lint (`eslint --fix`, then a real check), then `tsc --noEmit` — either failing discards the generated files.
+3. The generated spec run **3 consecutive times** with `--retries=0` — a public demo API (e.g. Petstore) is
+   mutable by anyone at any moment, so passing once is not evidence of stability the way it would be against a
+   fixture.
+
+Anything failing any of these steps is deleted (`cleanUp()`), not left half-onboarded for a re-run to trip over.
+
+> [!NOTE]
+> This is human-invoked, not CI-wired — unlike [Self-Evolving Test Suite](#7-self-evolving-test-suite) or
+> `agent-fixer`, there is no branch/PR pipeline here. The person running it already has a target repo/branch in
+> hand; delivering the result as a PR is their call, not this script's.
+
 ## Not yet built
 
 - **A genuine per-test dynamic retry budget** — `retries` in `playwright.config.ts` is a single static number
@@ -746,9 +799,11 @@ from inside the repo.
   check #3 (assertion honesty) exists to catch, so a human has to be the one who merges it.
 - **CI enforcement for the page-knowledge convention** — no lint/CI check that the doc was updated alongside test
   code; it's a discipline convention, not an enforced one.
-- **Page-knowledge coverage** — seven pages are documented (Text Box, Check Box, Buttons, Book Store Register, Book
-  Store List, Book Store Login, Web Tables); the rest of the DemoQA pages haven't been explored yet. Trust
-  `ls docs/page-knowledge/` over this line — a page gets documented more often than this count gets updated.
+- **Page-knowledge coverage** — eight DemoQA pages are documented (Text Box, Check Box, Buttons, Links, Book Store
+  Register, Book Store List, Book Store Login, Web Tables); the rest of the DemoQA pages haven't been explored yet.
+  Trust `ls docs/page-knowledge/` over this line — a page gets documented more often than this count gets updated.
+  (That directory may also hold notes for a one-off external-site exploration unrelated to this framework's SUTs —
+  not counted here.)
 
 ## Reports
 

@@ -7,30 +7,31 @@ duplicate README content here; link to its section (`README.md#N`) instead.
 
 ## Where things live
 
-| Task involves...                                                                   | Look at                                                                                                                                                                    | Details                     |
-| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| REST tests (Restful Booker)                                                        | `src/api/` (clients/types/steps/data/auth), `tests/api/*.spec.ts`                                                                                                          | README §"Endpoint Coverage" |
-| GraphQL tests (Hygraph)                                                            | `src/graphql/`, `tests/graphql/*.spec.ts`, `resources/GQL/*.json`                                                                                                          | README §"GraphQL and UI"    |
-| UI tests (DemoQA)                                                                  | `src/ui/` (fixtures.ts, pages/, steps/), `tests/ui/*.spec.ts`                                                                                                              | README §1                   |
-| Self-healing locators (healwright)                                                 | `src/ui/fixtures.ts`                                                                                                                                                       | README §1                   |
-| Observability / JSONL run logs                                                     | `src/observability/reporter.ts`, `.observability/*.jsonl` (gitignored)                                                                                                     | README §2                   |
-| Agent-Fixer (locator fix → PR)                                                     | `src/agent-fixer/`                                                                                                                                                         | README §3                   |
-| Failure Analysis (cause grouping, retry verdicts, flaky-test quarantine detection) | `src/failure-analysis/` (incl. `quarantine.ts`, `check-quarantine-ttl.ts`)                                                                                                 | README §4                   |
-| Affected-test selection                                                            | `src/test-selection/`                                                                                                                                                      | README §5                   |
-| Jira red-test triage                                                               | `src/jira-triage/`                                                                                                                                                         | README §6                   |
-| Self-evolving test suite (new edge-case test → PR)                                 | `src/test-evolution/`                                                                                                                                                      | README §7                   |
-| Goal-based tests (prose goal → agent-written driver)                               | `src/goal-evolution/` (`goal.ts`, `goals/*.ts`, `run.ts`, `propose-driver.ts`)                                                                                             | README §8                   |
-| Page-knowledge cache (per-page DOM/behavior notes)                                 | `docs/page-knowledge/*.md` — currently `text-box.md`, `check-box.md`, `buttons.md`, `book-store-register.md`, `book-store-list.md`, `book-store-login.md`, `web-tables.md` | README §9                   |
-| AI personas / model tiers                                                          | `ai-agents/personas/*.md` (system prompts), `ai-agents/profiles/{cheap,paranoid}.env`, `src/ai-agents/cli-fallback.ts`, `gemini-text.ts`                                   | README §10                  |
-| PR review gate (whole-diff review, blocks merge)                                   | `src/ai-agents/pr-reviewer.ts`, `ai-agents/personas/pr-reviewer.md`, shared verdict grammar in `src/ai-agents/review-verdict.ts`, `pr-review` job in `regression.yml`      | README §11                  |
-| Env vars / config                                                                  | `src/core/config.ts`, `src/core/global-setup.ts` (fails fast on missing vars), `.env.example` (full inventory)                                                             | —                           |
-| CI pipeline                                                                        | `.github/workflows/regression.yml`                                                                                                                                         | —                           |
-| Secret scanning (blocking gate)                                                    | `secret-scan` job in `regression.yml` (gitleaks)                                                                                                                           | —                           |
+| Task involves...                                                                   | Look at                                                                                                                                                               | Details                     |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| REST tests (Restful Booker)                                                        | `src/api/` (clients/types/steps/data/auth), `tests/api/*.spec.ts`                                                                                                     | README §"Endpoint Coverage" |
+| GraphQL tests (Hygraph)                                                            | `src/graphql/`, `tests/graphql/*.spec.ts`, `resources/GQL/*.json`                                                                                                     | README §"GraphQL and UI"    |
+| UI tests (DemoQA)                                                                  | `src/ui/` (fixtures.ts, pages/, steps/), `tests/ui/*.spec.ts`                                                                                                         | README §1                   |
+| Self-healing locators (healwright)                                                 | `src/ui/fixtures.ts`                                                                                                                                                  | README §1                   |
+| Observability / JSONL run logs                                                     | `src/observability/reporter.ts`, `.observability/*.jsonl` (gitignored)                                                                                                | README §2                   |
+| Agent-Fixer (locator fix → PR)                                                     | `src/agent-fixer/`                                                                                                                                                    | README §3                   |
+| Failure Analysis (cause grouping, retry verdicts, flaky-test quarantine detection) | `src/failure-analysis/` (incl. `quarantine.ts`, `check-quarantine-ttl.ts`)                                                                                            | README §4                   |
+| Affected-test selection                                                            | `src/test-selection/`                                                                                                                                                 | README §5                   |
+| Jira red-test triage                                                               | `src/jira-triage/`                                                                                                                                                    | README §6                   |
+| Self-evolving test suite (new edge-case test → PR)                                 | `src/test-evolution/`                                                                                                                                                 | README §7                   |
+| Goal-based tests (prose goal → agent-written driver)                               | `src/goal-evolution/` (`goal.ts`, `goals/*.ts`, `run.ts`, `propose-driver.ts`)                                                                                        | README §8                   |
+| API onboarding (OpenAPI/Swagger spec → typed client + AI-written test)             | `src/api-onboarder/` (`run.ts`, `generate-client.ts`, `generate-schema.ts`, `openapi-types.ts`, `propose-onboarding.ts`)                                              | —                           |
+| Page-knowledge cache (per-page DOM/behavior notes)                                 | `docs/page-knowledge/*.md` — see directory listing, not this line (frequently stale, see note below)                                                                  | README §9                   |
+| AI personas / model tiers                                                          | `ai-agents/personas/*.md` (system prompts), `ai-agents/profiles/{cheap,paranoid}.env`, `src/ai-agents/cli-fallback.ts`, `gemini-text.ts`                              | README §10                  |
+| PR review gate (whole-diff review, blocks merge)                                   | `src/ai-agents/pr-reviewer.ts`, `ai-agents/personas/pr-reviewer.md`, shared verdict grammar in `src/ai-agents/review-verdict.ts`, `pr-review` job in `regression.yml` | README §11                  |
+| Env vars / config                                                                  | `src/core/config.ts`, `src/core/global-setup.ts` (fails fast on missing vars), `.env.example` (full inventory)                                                        | —                           |
+| CI pipeline                                                                        | `.github/workflows/regression.yml`                                                                                                                                    | —                           |
+| Secret scanning (blocking gate)                                                    | `secret-scan` job in `regression.yml` (gitleaks)                                                                                                                      | —                           |
 
-Personas on disk (9): `qa-analyst`, `test-developer`, `locator-medic`, `reviewer-tests`,
-`pr-reviewer`, `goal-solver` (extends `test-developer`), `healing-classifier`, `retry-dispatcher`,
-`reporter` (docs-only convention, not loaded at runtime). All but `reporter` are read at runtime —
-`ls ai-agents/personas/` is the source of truth if this line goes stale.
+Personas on disk (10): `qa-analyst`, `test-developer`, `locator-medic`, `reviewer-tests`,
+`pr-reviewer`, `goal-solver` (extends `test-developer`), `api-onboarder`, `healing-classifier`,
+`retry-dispatcher`, `reporter` (docs-only convention, not loaded at runtime). All but `reporter`
+are read at runtime — `ls ai-agents/personas/` is the source of truth if this line goes stale.
 
 Two distinct review personas, easy to confuse: `reviewer-tests` judges ONE generated test file
 inside `test-evolution` and is advisory; `pr-reviewer` judges a WHOLE PR diff and blocks the merge
@@ -48,13 +49,18 @@ npm run report                 # Playwright HTML report
 npm run allure:generate / allure:serve
 
 npm run agent-fixer            # heal cache -> source-code fix -> PR
+npm run agent-fixer:verify-stability   # the merge gate itself: scope-check + repeat-each + suite-repeat
+npm run agent-fixer:circuit-breaker    # trips (blocks further auto-merge) on any reverted agent-fixer commit
 npm run failure-analysis       # cause grouping + retry verdicts + quarantine-candidate detection
 npm run check-quarantine-ttl   # CI gate: fails if a quarantine.json entry is past its TTL
+npm run link-healed-tests      # posts a same-run Allure deep-link to each self-healed test's CI step summary
 npm run test-evolution         # AI proposes + runs + PRs one new edge-case test
 npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user | book-store-remove-books
+npm run api-onboarder -- <spec-url> [api-name]   # OpenAPI/Swagger spec -> typed client + AI-written test
 npm run jira-triage [observability-run-file]   # defaults to latest .observability/run-*.jsonl
 npm run qa-analyst -- <requirement-file>
 npm run pr-review -- <pr-number>       # whole-diff PR review; exit 1 only on a `major` finding
+npm run ai-usage-report [-- --json]   # per-caller/per-model AI cost/token summary
 ```
 
 ## Critical rules
@@ -86,10 +92,10 @@ npm run pr-review -- <pr-number>       # whole-diff PR review; exit 1 only on a 
 
 - `CLAUDE.local.md` (gitignored, not checked in) holds session-specific working notes/decisions —
   check it for recent context this file doesn't carry.
-- Counts of files in `docs/page-knowledge/` appear in both this file and README's "Not yet built"
-  section. Both were stale before and have been corrected to five; still trust the directory
-  listing over either prose claim, since a new page gets documented more often than these lines
-  get updated.
+- This file no longer enumerates `docs/page-knowledge/` by name or count — every prior attempt
+  went stale (a new page gets documented more often than routing docs get updated). README keeps
+  a named list with its own trust-the-`ls` caveat; `ls docs/page-knowledge/` is authoritative over
+  both.
 - `npm run lint` / `format:check` / `typecheck` are hard CI gates. Both AI writers (`agent-fixer`,
   `test-evolution`) therefore run `prettier --write` on the file they generate before committing —
   do not remove that step, or every AI-authored PR goes red on style and the auto-merge path
