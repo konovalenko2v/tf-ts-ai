@@ -1,7 +1,8 @@
 import { StepEvent, TestSummaryEvent } from '../observability/types';
 import { HealEvent, healEventsInWindow, renderStrategy } from './heal-events';
+import { CONTRACT_VIOLATION_PREFIX } from '../api/contract';
 
-export type FailureCategory = 'config' | 'ai-quota' | 'ai-healing' | 'assertion' | 'other';
+export type FailureCategory = 'config' | 'ai-quota' | 'ai-healing' | 'contract' | 'assertion' | 'other';
 
 export interface FailureGroup {
   category: FailureCategory;
@@ -34,6 +35,10 @@ function categorize(message: string, stackTop: string[] | undefined): FailureCat
     return message.includes('RESOURCE_EXHAUSTED') || message.includes('"code":429') ? 'ai-quota' : 'ai-healing';
   }
   if ((stackTop ?? []).some((f) => f.includes('healwright'))) return 'ai-healing';
+  // Checked before `assertion`: a schema mismatch is a changed API, not a wrong expectation, and it
+  // fails identically on every retry. Matched on the prefix src/api/contract.ts owns — not on
+  // Zod's own wording, which is library output and free to change between versions.
+  if (message.includes(CONTRACT_VIOLATION_PREFIX)) return 'contract';
   if (/^Error: expect/.test(message) || message.includes('toBe') || message.includes('toEqual')) {
     return 'assertion';
   }

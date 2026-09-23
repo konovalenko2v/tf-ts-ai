@@ -4,6 +4,8 @@ import { BookingClient } from '../../src/api/clients/booking.client';
 import * as bookingData from '../../src/api/data/booking.data';
 import { getAuthToken } from '../../src/api/auth/token.provider';
 import { CreateBookingResponse } from '../../src/api/types/booking';
+import { parseBody } from '../../src/api/contract';
+import { BookingSchema } from '../../src/api/schemas/booking.schema';
 
 test.describe('Restful Booker API @ Booking CRUD', () => {
   let fixtureContext: APIRequestContext;
@@ -45,7 +47,7 @@ test.describe('Restful Booker API @ Booking CRUD', () => {
   test('GET /booking/{id} returns the previously created booking', async () => {
     const response = await bookingSteps.getBookingById(bookingPrec.bookingid);
     expect(response.status()).toBe(200);
-    const booking = await response.json();
+    const booking = await parseBody(response, BookingSchema);
 
     expect(booking.firstname).toBeTruthy();
     expect(booking.lastname).toBeTruthy();
@@ -62,7 +64,7 @@ test.describe('Restful Booker API @ Booking CRUD', () => {
   });
 
   test('GET /booking?firstname=...&lastname=... returns bookings including the one just created', async () => {
-    const ids = await bookingSteps.getBookingIdsFilteredByName(bookingPrec.booking.firstname!, bookingPrec.booking.lastname!);
+    const ids = await bookingSteps.getBookingIdsFilteredByName(bookingPrec.booking.firstname, bookingPrec.booking.lastname);
     expect(ids).toContain(bookingPrec.bookingid);
   });
 
@@ -86,7 +88,7 @@ test.describe('Restful Booker API @ Booking CRUD', () => {
     const token = await getAuthToken(request);
     const response = await bookingSteps.updateBooking(created.bookingid, updated, token);
     expect(response.status()).toBe(200);
-    const body = await response.json();
+    const body = await parseBody(response, BookingSchema);
 
     expect(body.firstname).toBe('Jane');
     expect(body.lastname).toBe('Doe');
@@ -112,7 +114,7 @@ test.describe('Restful Booker API @ Booking CRUD', () => {
     const token = await getAuthToken(request);
     const response = await bookingSteps.partialUpdateBooking(created.bookingid, patchBody, token);
     expect(response.status()).toBe(200);
-    const body = await response.json();
+    const body = await parseBody(response, BookingSchema);
 
     expect(body.firstname).toBe('Robert');
     expect(body.lastname).toBe('Martin');

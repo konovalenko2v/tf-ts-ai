@@ -1,6 +1,8 @@
 import { APIRequestContext } from '@playwright/test';
 import { config } from '../../core/config';
 import { Booking, CreateBookingResponse } from '../types/booking';
+import { parseBody } from '../contract';
+import { BookingIdListSchema, CreateBookingResponseSchema } from '../schemas/booking.schema';
 
 const BOOKING_PATH = '/booking/';
 
@@ -12,7 +14,7 @@ export class BookingClient {
     if (response.status() !== 200) {
       throw new Error(`createBooking failed with status ${response.status()}`);
     }
-    return response.json();
+    return parseBody(response, CreateBookingResponseSchema);
   }
 
   async getBookingById(id: number) {
@@ -21,16 +23,16 @@ export class BookingClient {
 
   async getAllBookingIds(): Promise<number[]> {
     const response = await this.request.get(`${config.host}${BOOKING_PATH}`);
-    const body = await response.json();
-    return body.map((b: { bookingid: number }) => b.bookingid);
+    const body = await parseBody(response, BookingIdListSchema);
+    return body.map((b) => b.bookingid);
   }
 
   async getBookingIdsFilteredByName(firstname: string, lastname: string): Promise<number[]> {
     const response = await this.request.get(`${config.host}${BOOKING_PATH}`, {
       params: { firstname, lastname },
     });
-    const body = await response.json();
-    return body.map((b: { bookingid: number }) => b.bookingid);
+    const body = await parseBody(response, BookingIdListSchema);
+    return body.map((b) => b.bookingid);
   }
 
   async getBookingsFilteredByDates(checkin: string, checkout: string) {

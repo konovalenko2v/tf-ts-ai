@@ -60,7 +60,8 @@
     "@faker-js/faker": "^10.6.0",
     "@reportportal/client-javascript": "^5.6.0",
     "dotenv": "^17.4.2",
-    "healwright": "^1.8.0"
+    "healwright": "^1.8.0",
+    "zod": "^4.6.5"
   },
   "lint-staged": {
     "*": "prettier --ignore-unknown --write"

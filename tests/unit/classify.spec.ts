@@ -63,6 +63,20 @@ test.describe('groupFailures — categorization', () => {
     expect(groups[0].category).toBe('assertion');
   });
 
+  test('categorizes a Zod contract violation as "contract", not "assertion" or "other"', () => {
+    // The message deliberately also contains `toBe`-style wording a prettified Zod error could plausibly
+    // carry — the contract check must win, since a changed API shape is not a wrong expectation.
+    const groups = groupFailures([
+      makeTest({
+        error: {
+          message:
+            'ContractViolationError: Contract violation: https://host/booking/42 (HTTP 200) does not match Booking\n✖ Invalid input: expected number, received string → at totalprice',
+        },
+      }),
+    ]);
+    expect(groups[0].category).toBe('contract');
+  });
+
   test('falls back to "other" for anything unrecognized', () => {
     const groups = groupFailures([makeTest({ error: { message: 'Error: something completely unexpected happened' } })]);
     expect(groups[0].category).toBe('other');

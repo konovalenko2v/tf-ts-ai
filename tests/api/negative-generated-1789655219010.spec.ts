@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { config, getValidUserName, getValidUserPassword } from '../../src/core/config';
+import { config } from '../../src/core/config';
 import { validBooking } from '../../src/api/data/booking.data';
-import { AuthClient } from '../../src/api/clients/auth.client';
+import { getAuthToken } from '../../src/api/auth/token.provider';
 import { BookingClient } from '../../src/api/clients/booking.client';
 
 test.describe('@api Restful Booker API @ Negative & edge cases (generated)', () => {
@@ -21,9 +21,7 @@ test.describe('@api Restful Booker API @ Negative & edge cases (generated)', () 
   });
 
   test.afterEach(async ({ request }) => {
-    const authClient = new AuthClient(request);
-    const authResponse = await authClient.authenticate(getValidUserName(), getValidUserPassword());
-    const { token } = await authResponse.json();
+    const token = await getAuthToken(request);
 
     await request.delete(`${config.host}/booking/${createdBookingId}`, { headers: { Cookie: `token=${token}` } });
   });

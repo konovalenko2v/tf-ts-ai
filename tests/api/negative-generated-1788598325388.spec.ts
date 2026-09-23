@@ -1,7 +1,9 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
-import { config, getValidUserName, getValidUserPassword } from '../../src/core/config';
+import { config } from '../../src/core/config';
 import { validBooking } from '../../src/api/data/booking.data';
-import { AuthClient } from '../../src/api/clients/auth.client';
+import { getAuthToken } from '../../src/api/auth/token.provider';
+import { parseBody } from '../../src/api/contract';
+import { CreateBookingResponseSchema } from '../../src/api/schemas/booking.schema';
 
 test.describe('Restful Booker API @ Negative & edge cases (generated)', () => {
   const createdBookingIds: number[] = [];
@@ -13,7 +15,7 @@ test.describe('Restful Booker API @ Negative & edge cases (generated)', () => {
     const response = await request.post(`${config.host}/booking`, { data: booking });
     expect(response.status()).toBe(200);
 
-    const body = await response.json();
+    const body = await parseBody(response, CreateBookingResponseSchema);
     expect(body.booking.additionalneeds).toBe(longNeeds);
 
     createdBookingIds.push(body.bookingid);
@@ -23,9 +25,7 @@ test.describe('Restful Booker API @ Negative & edge cases (generated)', () => {
     if (createdBookingIds.length === 0) {
       return;
     }
-    const authClient = new AuthClient(request);
-    const authResponse = await authClient.authenticate(getValidUserName(), getValidUserPassword());
-    const { token } = await authResponse.json();
+    const token = await getAuthToken(request);
 
     for (const id of createdBookingIds.splice(0)) {
       await request.delete(`${config.host}/booking/${id}`, { headers: { Cookie: `token=${token}` } });
