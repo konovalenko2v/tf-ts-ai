@@ -10,22 +10,31 @@ import { z } from 'zod';
 // validates the declared fields and passes everything else through untouched — tolerant of an
 // additive API change, without hiding what the API actually returned.
 
-export const BookingDatesSchema = z.looseObject({
+// Field shapes shared by the response contract (loose) and the request type (strict) below, so the
+// two can't drift apart in naming.
+const bookingDatesShape = {
   checkin: z.string(),
   checkout: z.string(),
-});
+};
 
-export const BookingSchema = z
-  .looseObject({
-    firstname: z.string(),
-    lastname: z.string(),
-    totalprice: z.number(),
-    depositpaid: z.boolean(),
-    bookingdates: BookingDatesSchema,
-    // Omitted from the response entirely (not null) when the booking was created without it.
-    additionalneeds: z.string().optional(),
-  })
-  .describe('Booking');
+const bookingShape = {
+  firstname: z.string(),
+  lastname: z.string(),
+  totalprice: z.number(),
+  depositpaid: z.boolean(),
+  // Omitted from the response entirely (not null) when the booking was created without it.
+  additionalneeds: z.string().optional(),
+};
+
+export const BookingDatesSchema = z.looseObject(bookingDatesShape);
+
+export const BookingSchema = z.looseObject({ ...bookingShape, bookingdates: BookingDatesSchema }).describe('Booking');
+
+// Request-body type only (never used to parse): a plain z.object, all fields optional. NOT derived
+// from the loose response schema — looseObject's inferred type carries a `[k: string]: unknown`
+// index signature, which switches off TypeScript's excess-property check, so a typo such as
+// `{ fristname: 'x' }` in a data factory would compile. The strict shape keeps that check.
+export const BookingRequestSchema = z.object({ ...bookingShape, bookingdates: z.object(bookingDatesShape) }).partial();
 
 export const CreateBookingResponseSchema = z
   .looseObject({
