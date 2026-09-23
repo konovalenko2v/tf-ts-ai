@@ -15,3 +15,7 @@ ai-agents/personas/
 # Page-knowledge notes are hand-maintained reference tables read by both humans and agents; their
 # column alignment is deliberate and reflowing them creates noisy diffs on every edit.
 docs/page-knowledge/
+
+# Stryker mutation testing — sandbox copies and the HTML report
+.stryker-tmp/
+reports/

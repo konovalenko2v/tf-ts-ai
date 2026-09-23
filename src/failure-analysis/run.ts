@@ -14,6 +14,7 @@ const CATEGORY_LABELS: Record<FailureCategory, string> = {
   config: 'Configuration (missing/invalid env var)',
   'ai-quota': 'AI provider quota exhausted (not a healing capability issue)',
   'ai-healing': 'AI healing tried and failed to recover a broken locator',
+  contract: 'API contract violation (response shape no longer matches its Zod schema)',
   assertion: 'Assertion failure (likely a real bug)',
   other: 'Uncategorized',
 };
@@ -29,6 +30,8 @@ const RETRY_VERDICTS: Record<FailureCategory, string> = {
     'Retrying is correct — the provider itself returns a retry-after delay, and the model fallback (AI_MODEL_FALLBACK) has turned this into a pass on a later attempt before.',
   'ai-healing':
     'Retrying rarely helps — the AI looked and found nothing; a second identical attempt is unlikely to differ. Worth a human look at the locator/description, not more retries.',
+  contract:
+    'Retrying cannot fix this — the response has the same shape on every attempt. Either the API changed (update the schema in src/api/schemas/ if the change is intended) or it regressed.',
   assertion: 'Retrying is the right way to tell flake from a real bug — if it fails on every attempt, treat it as a real bug.',
   other: 'No established policy yet — falls back to the project default retry count.',
 };

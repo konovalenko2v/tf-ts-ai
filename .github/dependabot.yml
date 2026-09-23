@@ -17,6 +17,7 @@ updates:
           - 'typescript-eslint'
           - 'prettier*'
           - 'c8'
+          - '@stryker-mutator/*'
           - 'tsx'
           - 'typescript'
       allure:

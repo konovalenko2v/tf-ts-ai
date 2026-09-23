@@ -1,15 +1,6 @@
-export interface Book {
-  isbn: string;
-  title: string;
-  subTitle: string;
-  author: string;
-  publish_date: string;
-  publisher: string;
-  pages: number;
-  description: string;
-  website: string;
-}
+import { z } from 'zod';
+import { BookSchema, BooksResponseSchema } from '../schemas/book-store.schema';
 
-export interface BooksResponse {
-  books: Book[];
-}
+// Inferred from the Zod contract in ../schemas — see ../types/booking.ts.
+export type Book = z.infer<typeof BookSchema>;
+export type BooksResponse = z.infer<typeof BooksResponseSchema>;

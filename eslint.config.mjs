@@ -18,6 +18,8 @@ export default tseslint.config(
       'test-results/**',
       '.observability/**',
       '.self-heal/**',
+      '.stryker-tmp/**',
+      'reports/**',
     ],
   },
   js.configs.recommended,

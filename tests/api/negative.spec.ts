@@ -1,7 +1,9 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
-import { config, getValidUserName, getValidUserPassword } from '../../src/core/config';
+import { config } from '../../src/core/config';
 import { bookingWithDates, bookingWithNames, bookingWithTotalPrice } from '../../src/api/data/booking.data';
-import { AuthClient } from '../../src/api/clients/auth.client';
+import { getAuthToken } from '../../src/api/auth/token.provider';
+import { parseBody } from '../../src/api/contract';
+import { CreateBookingResponseSchema, CreatedBookingIdSchema } from '../../src/api/schemas/booking.schema';
 
 test.describe('Restful Booker API @ Negative & edge cases', () => {
   const createdBookingIds: number[] = [];
@@ -16,7 +18,7 @@ test.describe('Restful Booker API @ Negative & edge cases', () => {
     const response = await request.post(`${config.host}/booking`, { data: booking });
 
     expect(response.status()).toBe(200);
-    const body = await response.json();
+    const body = await parseBody(response, CreateBookingResponseSchema);
     expect(body.booking.firstname).toBe(booking.firstname);
     expect(body.booking.lastname).toBe(booking.lastname);
 
@@ -29,7 +31,7 @@ test.describe('Restful Booker API @ Negative & edge cases', () => {
     const response = await request.post(`${config.host}/booking`, { data: bookingWithTotalPrice(-100) });
 
     expect(response.status()).toBe(200);
-    const body = await response.json();
+    const body = await parseBody(response, CreateBookingResponseSchema);
     expect(body.booking.totalprice).toBe(-100);
 
     createdBookingIds.push(body.bookingid);
@@ -49,7 +51,7 @@ test.describe('Restful Booker API @ Negative & edge cases', () => {
 
     const response = await request.post(`${config.host}/booking`, { data: rawBody });
     expect(response.status()).toBe(200);
-    const body = await response.json();
+    const body = await parseBody(response, CreatedBookingIdSchema);
     createdBookingIds.push(body.bookingid);
   });
 
@@ -67,7 +69,7 @@ test.describe('Restful Booker API @ Negative & edge cases', () => {
 
     const response = await request.post(`${config.host}/booking`, { data: rawBody });
     expect(response.status()).toBe(200);
-    const body = await response.json();
+    const body = await parseBody(response, CreatedBookingIdSchema);
     createdBookingIds.push(body.bookingid);
   });
 
@@ -77,7 +79,7 @@ test.describe('Restful Booker API @ Negative & edge cases', () => {
     });
 
     expect(response.status()).toBe(200);
-    const body = await response.json();
+    const body = await parseBody(response, CreateBookingResponseSchema);
     createdBookingIds.push(body.bookingid);
   });
 
@@ -97,9 +99,7 @@ test.describe('Restful Booker API @ Negative & edge cases', () => {
     if (createdBookingIds.length === 0) {
       return;
     }
-    const authClient = new AuthClient(request);
-    const authResponse = await authClient.authenticate(getValidUserName(), getValidUserPassword());
-    const { token } = await authResponse.json();
+    const token = await getAuthToken(request);
 
     for (const id of createdBookingIds.splice(0)) {
       await request.delete(`${config.host}/booking/${id}`, { headers: { Cookie: `token=${token}` } });

@@ -11,3 +11,7 @@ allure-report/
 .observability/
 coverage/
 docker/reportportal/docker-compose.override.yml
+
+# Stryker mutation testing — sandbox copies and the HTML report
+.stryker-tmp/
+reports/

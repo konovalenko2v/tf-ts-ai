@@ -37,7 +37,10 @@ async function main(): Promise<void> {
   const tests = events.filter((e): e is TestSummaryEvent => e.type === 'test');
   const steps = events.filter((e): e is StepEvent => e.type === 'step');
 
-  const groups = groupFailures(tests).filter((g) => g.category === 'assertion');
+  // `contract` too: a response-shape change (src/api/contract.ts) is exactly the "bug, or an
+  // intentional change the ticket describes?" question triage exists for — before Zod contracts
+  // it surfaced as an `assertion` failure and was triaged; it must not silently drop out now.
+  const groups = groupFailures(tests).filter((g) => g.category === 'assertion' || g.category === 'contract');
   if (groups.length === 0) {
     process.stderr.write('[jira-triage] no assertion failures in this run — nothing to triage\n');
     return;

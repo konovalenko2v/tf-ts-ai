@@ -3,6 +3,8 @@ import { config } from '../../src/core/config';
 import { validBooking } from '../../src/api/data/booking.data';
 import { BookingClient } from '../../src/api/clients/booking.client';
 import { getAuthToken } from '../../src/api/auth/token.provider';
+import { parseBody } from '../../src/api/contract';
+import { CreateBookingResponseSchema } from '../../src/api/schemas/booking.schema';
 
 test.describe('Restful Booker API @ Negative & edge cases', () => {
   // Cleanup lives in afterEach, not a try/finally in the test body — see negative-empty-names.spec.ts.
@@ -30,7 +32,7 @@ test.describe('Restful Booker API @ Negative & edge cases', () => {
     const response = await request.post(`${config.host}/booking`, { data: rawBody });
     expect(response.status()).toBe(200);
 
-    const body = await response.json();
+    const body = await parseBody(response, CreateBookingResponseSchema);
     bookingId = body.bookingid;
     expect(body.bookingid).toBeGreaterThan(0);
     expect(body.booking.firstname).toBe(baseBooking.firstname);

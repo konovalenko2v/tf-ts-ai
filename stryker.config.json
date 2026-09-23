@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Mutation testing for the code that decides what merges without a human (README 'Mutation testing'). command runner: Stryker has no Playwright Test runner, so every mutant re-runs only the specs that import the mutated modules. --retries=0: CI config retries twice, and Playwright exits 0 on flaky-passed-on-retry, which would count an intermittently failing mutant as Survived. timeoutMS 30000: with the default (~7s, derived from a 1.4s dry run) Playwright startup under 5 parallel runners timed out on 56 of 62 verify-stability mutants, and Stryker counts a timeout as killed - the first baseline read 85.9% when the real score was 71.1%.",
+  "mutate": ["src/agent-fixer/safety-gates.ts", "src/agent-fixer/verify-stability.ts", "src/ai-agents/review-verdict.ts"],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "npx playwright test --project=unit --retries=0 --reporter=dot -x tests/unit/safety-gates.spec.ts tests/unit/verify-stability.spec.ts tests/unit/pr-reviewer.spec.ts"
+  },
+  "coverageAnalysis": "off",
+  "checkers": ["typescript"],
+  "tsconfigFile": "tsconfig.json",
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/index.html"
+  },
+  "thresholds": {
+    "high": 90,
+    "low": 80,
+    "break": 80
+  },
+  "tempDirName": ".stryker-tmp",
+  "ignorePatterns": [
+    "allure-results",
+    "allure-report",
+    "playwright-report",
+    "test-results",
+    "blob-report",
+    ".observability",
+    ".self-heal",
+    "coverage",
+    "reports",
+    "docs"
+  ],
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "timeoutMS": 30000
+}
