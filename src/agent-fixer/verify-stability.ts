@@ -20,9 +20,15 @@ import { isWithinAllowedScope, ALLOWED_TARGET_FILES } from './safety-gates';
 export const REPEAT_EACH_TEST = 5;
 export const REPEAT_WHOLE_SUITE = 2;
 
-function runPlaywright(specs: string[], args: string[]): boolean {
+// `exec` is injectable for the same reason evaluateStability's runner is: mutation testing showed
+// that flipping this function's `return true` / `return false` survived the whole unit suite —
+// i.e. a real runner that reported every Playwright failure as success would have made the gate
+// decorative with every test still green. Production passes nothing and gets execFileSync.
+type Exec = (file: string, args: string[], options: { stdio: 'inherit' }) => unknown;
+
+export function runPlaywright(specs: string[], args: string[], exec: Exec = execFileSync): boolean {
   try {
-    execFileSync('npx', ['playwright', 'test', ...specs, ...args], { stdio: 'inherit' });
+    exec('npx', ['playwright', 'test', ...specs, ...args], { stdio: 'inherit' });
     return true;
   } catch {
     return false;
@@ -90,7 +96,15 @@ function main(): void {
   const verdict = evaluateStability(result, runPlaywright);
 
   process.stderr.write(`[verify-stability] ${verdict.reason}\n`);
-  if (!verdict.passed) process.exitCode = 1;
+  process.exitCode = exitCodeFor(verdict);
+}
+
+// The one line that turns a verdict into "the CI job goes red" — the thing the merge job actually
+// gates on. Pulled out of main() because mutation testing showed deleting it survived: with the
+// decision buried in an untested main(), a gate that never failed its job looked identical to one
+// that did.
+export function exitCodeFor(verdict: StabilityVerdict): 0 | 1 {
+  return verdict.passed ? 0 : 1;
 }
 
 // Guards against running real subprocesses / touching process.exitCode when this module is

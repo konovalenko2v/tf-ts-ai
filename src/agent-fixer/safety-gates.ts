@@ -1,7 +1,8 @@
 // Pure-function safety checks for agent-fixer's auto-merge path. Kept separate from
 // verify-stability.ts (and free of child_process/fs at the call sites below) specifically so they
-// have unit coverage before ever running live in CI — verify-stability.ts itself still has none,
-// which the framework's own enterprise-readiness assessment flagged as its biggest risk.
+// have unit coverage before ever running live in CI. Both this module and verify-stability.ts are
+// also mutation-tested (stryker.config.json) — line coverage alone said nothing about whether the
+// tests would notice these checks being inverted.
 
 // --- Scope limit (point 4): agent-fixer must only ever touch its declared target file(s). If the
 // PR branch's diff against base touches anything else — a config file, a workflow, a dependency —

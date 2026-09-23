@@ -1,0 +1,67 @@
+name: Mutation testing
+run-name: Mutation testing #${{ github.run_number }}
+
+# Mutation testing for the code that decides what merges without a human: the agent-fixer scope
+# check, circuit breaker and risk-tier routing (safety-gates.ts), the stability gate
+# (verify-stability.ts) and the pr-reviewer verdict parser (review-verdict.ts). Line coverage says
+# a test *executed* a check; this says whether any test would *notice* the check being inverted.
+#
+# Path-filtered on purpose — a full run takes ~2.5 min, which is worth paying on a PR that touches
+# a gate module or its tests, and pointless on every README edit. A separate workflow rather than
+# a job in regression.yml so it doesn't inherit that file's Pages permissions and concurrency group.
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'src/agent-fixer/safety-gates.ts'
+      - 'src/agent-fixer/verify-stability.ts'
+      - 'src/ai-agents/review-verdict.ts'
+      - 'tests/unit/safety-gates.spec.ts'
+      - 'tests/unit/verify-stability.spec.ts'
+      - 'tests/unit/pr-reviewer.spec.ts'
+      - 'stryker.config.json'
+      - '.github/workflows/mutation.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/agent-fixer/safety-gates.ts'
+      - 'src/agent-fixer/verify-stability.ts'
+      - 'src/ai-agents/review-verdict.ts'
+      - 'tests/unit/safety-gates.spec.ts'
+      - 'tests/unit/verify-stability.spec.ts'
+      - 'tests/unit/pr-reviewer.spec.ts'
+      - 'stryker.config.json'
+      - '.github/workflows/mutation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails the job when the score drops below thresholds.break in stryker.config.json. No
+      # browser install: the unit project is pure TypeScript and never launches one.
+      - name: Run Stryker
+        run: npm run test:mutation
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mutation-report
+          path: reports/mutation/
+          retention-days: 14

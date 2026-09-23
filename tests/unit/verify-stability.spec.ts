@@ -4,7 +4,13 @@
 // is the pure decision function extracted for this purpose — the real getAffectedSpecs/execFileSync
 // calls stay in main(), which is not covered here (that's process/subprocess plumbing, not a decision).
 import { test, expect } from '@playwright/test';
-import { evaluateStability, REPEAT_EACH_TEST, REPEAT_WHOLE_SUITE } from '../../src/agent-fixer/verify-stability';
+import {
+  evaluateStability,
+  exitCodeFor,
+  runPlaywright,
+  REPEAT_EACH_TEST,
+  REPEAT_WHOLE_SUITE,
+} from '../../src/agent-fixer/verify-stability';
 import { ALLOWED_TARGET_FILES } from '../../src/agent-fixer/safety-gates';
 import { AffectedResult } from '../../src/test-selection/affected-tests';
 
@@ -43,6 +49,7 @@ test.describe('evaluateStability — scope gate', () => {
     const verdict = evaluateStability(affected({ changedFiles: ['.github/workflows/regression.yml'] }), runner);
     expect(verdict.passed).toBe(false);
     expect(verdict.reason).toContain('outside the allowed auto-merge scope');
+    expect(verdict.reason).toContain('.github/workflows/regression.yml');
   });
 
   test('the scope gate runs BEFORE any Playwright invocation — an out-of-scope branch never gets its tests run', () => {
@@ -127,5 +134,34 @@ test.describe('evaluateStability — full pass', () => {
     const verdict = evaluateStability(affected(), runner);
     expect(verdict.passed).toBe(true);
     expect(verdict.reason).toContain('safe to auto-merge');
+  });
+});
+
+// Added after mutation testing: the real runner and the exit-code decision both lived in untested
+// code, and inverting either survived the whole suite — a gate that reported every Playwright
+// failure as success, or never failed its CI job, looked identical to a working one.
+test.describe('runPlaywright — the real runner', () => {
+  test('reports success when Playwright exits 0, passing specs then args through verbatim', () => {
+    const calls: unknown[][] = [];
+    const ok = runPlaywright(['tests/ui/a.spec.ts'], ['--retries=0'], (...a) => calls.push(a));
+    expect(ok).toBe(true);
+    expect(calls).toEqual([['npx', ['playwright', 'test', 'tests/ui/a.spec.ts', '--retries=0'], { stdio: 'inherit' }]]);
+  });
+
+  test('reports failure when Playwright exits nonzero (execFileSync throws)', () => {
+    const failing = () => {
+      throw new Error('Command failed: npx playwright test');
+    };
+    expect(runPlaywright(['tests/ui/a.spec.ts'], [], failing)).toBe(false);
+  });
+});
+
+test.describe('exitCodeFor — what the CI job actually gates on', () => {
+  test('a failed verdict fails the job', () => {
+    expect(exitCodeFor({ passed: false, reason: 'FAILED' })).toBe(1);
+  });
+
+  test('a passed verdict does not', () => {
+    expect(exitCodeFor({ passed: true, reason: 'PASSED' })).toBe(0);
   });
 });

@@ -35,12 +35,15 @@
     "ai-usage-report": "tsx src/ai-agents/usage-report.ts",
     "agent-fixer:verify-stability": "tsx src/agent-fixer/verify-stability.ts",
     "agent-fixer:circuit-breaker": "tsx src/agent-fixer/circuit-breaker.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:mutation": "stryker run"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
     "@reportportal/agent-js-playwright": "^5.5.0",
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/typescript-checker": "^10.0.0",
     "@types/node": "^26.6.1",
     "allure-commandline": "^2.46.1",
     "allure-js-commons": "^3.12.2",

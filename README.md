@@ -98,10 +98,61 @@ npm run format        # prettier --write
 ```
 
 All three run in CI (`regression.yml`) **before** the browser install, so a style or type break fails in seconds
-rather than after a full browser matrix. Current state: **0 errors, 109 warnings**. The warnings are a single
-bounded item — `response.json()` returns `any`, so every use of a parsed body trips `no-unsafe-*`. They are left as
-visible warnings rather than suppressed with directives: the fix is to type the response bodies, and hidden debt is
-worse than counted debt.
+rather than after a full browser matrix. Current state: **0 errors, 65 warnings** (down from 134 once REST
+responses went through Zod contracts — see below). What remains is `any` from untyped JSON in the GraphQL specs and
+in agent-written goal drivers. They are left as visible warnings rather than suppressed with directives: hidden
+debt is worse than counted debt.
+
+### API response contracts (Zod)
+
+Every REST success-path body goes through `parseBody(response, schema)` (`src/api/contract.ts`) instead of
+`await response.json()`. A renamed or retyped field used to flow into the test as `undefined` and fail — if at all
+— only on whichever assertion touched it; now it fails at the boundary, naming the URL, the schema and the field:
+
+```
+ContractViolationError: Contract violation: https://restful-booker.herokuapp.com/booking/ (HTTP 200) does not match CreateBookingResponse
+✖ Invalid input: expected number, received string
+  → at booking.totalprice
+```
+
+- **Schemas** live in `src/api/schemas/`, built from captured live payloads. Response types in `src/api/types/` are
+  `z.infer`'d from them — one source of truth, so a type can't claim a field the runtime check doesn't verify.
+- **`z.looseObject`, never `z.object`.** Plain `z.object` strips unknown keys from the parsed result, which would
+  silently turn `negative-unknown-fields.spec.ts`'s "the API drops unknown fields" assertion into a tautology. A unit
+  test (`tests/unit/contract.spec.ts`) fails if a schema is ever switched.
+- **Success paths only.** Restful Booker's 4xx bodies are plain text (`Forbidden`), not JSON — assert the status.
+- **Known API quirk the contract surfaces:** a string `totalprice` is accepted with 200 and stored as `null`. The
+  two "API accepts an invalid type" tests therefore use an id-only contract (`CreatedBookingIdSchema`).
+- **Out of scope so far:** GraphQL responses, and `achieve()` drivers written by goal-evolution's agent.
+- **Failure-analysis category:** a contract failure is its own `contract` cause (matched on the `Contract
+violation` prefix `contract.ts` owns), not `other` — retrying can't change a response shape, and `other` would
+  trigger a paid AI retry-dispatcher call.
+
+One known cost: if the contract fails on a `POST /booking` response, the created id is inside the rejected body,
+so that one booking can't be cleaned up.
+
+### Mutation testing (Stryker)
+
+```bash
+npm run test:mutation   # ~2.5 min; HTML report in reports/mutation/
+```
+
+Coverage says a test _executed_ a line; mutation testing says whether any test would _notice_ that line being
+broken. It is scoped to the code that decides what merges without a human — `safety-gates.ts` (scope check,
+circuit breaker, risk-tier routing), `verify-stability.ts` (the stability gate) and `review-verdict.ts`
+(pr-reviewer's verdict parser) — and runs in `.github/workflows/mutation.yml` on any PR or push touching those
+files or their tests. The job fails below a score of 80 (`thresholds.break` in `stryker.config.json`).
+
+The first honest baseline was **71%**, and the surviving mutants were real gaps, not noise: replacing the circuit
+breaker's `some` with `every` (so one revert among ordinary commits no longer tripped it), counting _all_ commits as
+agent-fixer merges, a Playwright runner that reported every failure as success, and deleting `process.exitCode = 1`
+— each of those passed the entire unit suite. Tests for each brought it to **87%** (`safety-gates.ts` 100%). What
+still survives is log/report wording, one equivalent regex, and `main()` — the thin I/O shell only CI executes.
+
+Two settings in `stryker.config.json` are load-bearing: `--retries=0` (Playwright exits 0 on
+flaky-passed-on-retry, which would count an intermittently failing mutant as survived), and `timeoutMS: 30000` —
+with the default, Playwright's startup under parallel runners timed out on most `verify-stability` mutants, Stryker
+counts a timeout as a kill, and the first run reported a fake 86%.
 
 Two directories are deliberately excluded from Prettier (`.prettierignore`):
 
@@ -350,8 +401,8 @@ red right after an auto-merge.
 
 ## 4. Failure Analysis
 
-`src/failure-analysis/` groups failed tests by a normalized error signature into one of five causes — `config`,
-`ai-quota`, `ai-healing`, `assertion`, `other` — and states a retry verdict per cause (e.g. "retrying a config
+`src/failure-analysis/` groups failed tests by a normalized error signature into one of six causes — `config`,
+`ai-quota`, `ai-healing`, `contract` (a Zod response-contract violation), `assertion`, `other` — and states a retry verdict per cause (e.g. "retrying a config
 error never helps, budget should be 0"; "retrying an assertion failure is the right way to tell flake from a real
 bug"). It's a stated policy today, not a dynamic retry-count controller — see [Smart Retry](#not-yet-built) below.
 

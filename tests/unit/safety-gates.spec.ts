@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { test, expect } from '@playwright/test';
 import {
+  ALLOWED_TARGET_FILES,
   isWithinAllowedScope,
   checkCircuitBreaker,
   riskTierFor,
@@ -60,6 +61,26 @@ test.describe('checkCircuitBreaker', () => {
   });
 });
 
+// Added after mutation testing (stryker.config.json): each test below kills a mutant that
+// survived the suite above — i.e. an inverted or emptied check that every existing test still
+// passed against.
+test.describe('checkCircuitBreaker — mutation-testing gaps', () => {
+  test('ONE revert buried among ordinary commits still trips — `some`, not `every`', () => {
+    const subjects = ['fix: unrelated', 'Revert "agent-fixer: replace healwright-recovered locators"', 'docs: readme'];
+    expect(checkCircuitBreaker(subjects, { maxMergesInWindow: 10 }).tripped).toBe(true);
+  });
+
+  test('unrelated commits never count toward the merge limit, however many there are', () => {
+    const subjects: string[] = Array<string>(5).fill('fix: an ordinary human commit');
+    expect(checkCircuitBreaker(subjects, { maxMergesInWindow: 3 })).toEqual({ tripped: false });
+  });
+
+  test('only agent-fixer commits are counted — the reason reports that count, not the window total', () => {
+    const subjects = ['fix: a', 'agent-fixer: one', 'fix: b', 'agent-fixer: two', 'agent-fixer: three', 'fix: c'];
+    expect(checkCircuitBreaker(subjects, { maxMergesInWindow: 3 }).reason).toContain('3 agent-fixer auto-merges');
+  });
+});
+
 test.describe('riskTierFor', () => {
   test('cache-only fixes are eligible for full auto-merge', () => {
     expect(riskTierFor(['cache', 'cache'])).toBe('auto-merge');
@@ -81,6 +102,20 @@ test.describe('branchFor', () => {
 
   test('human-review tier gets the ai-tier prefix', () => {
     expect(branchFor('human-review', '12345')).toBe(`${AI_TIER_BRANCH_PREFIX}12345`);
+  });
+});
+
+// The tests above compare against the exported constants themselves, so emptying a constant
+// passed them (mutation testing caught it). These pin the literal values.
+test.describe('branch prefixes and allowlist — literal values', () => {
+  test('tier prefixes are the exact literals the workflow and humans rely on', () => {
+    expect(branchFor('auto-merge', 'x')).toBe('agent-fixer/cache/x');
+    expect(branchFor('human-review', 'x')).toBe('agent-fixer/ai/x');
+  });
+
+  test('the auto-merge allowlist names a file that actually exists on disk', () => {
+    expect(ALLOWED_TARGET_FILES).toEqual(['src/ui/pages/practice-form.page.ts']);
+    for (const f of ALLOWED_TARGET_FILES) expect(fs.existsSync(path.join(__dirname, '../..', f))).toBe(true);
   });
 });
 
