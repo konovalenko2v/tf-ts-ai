@@ -1,4 +1,5 @@
-import { test, expect, request as playwrightRequest, APIRequestContext } from '@playwright/test';
+import { request as playwrightRequest, APIRequestContext } from '@playwright/test';
+import { test, expect } from '../../src/api/fixtures';
 import { BookingSteps } from '../../src/api/steps/booking.steps';
 import { BookingClient } from '../../src/api/clients/booking.client';
 import * as bookingData from '../../src/api/data/booking.data';
@@ -6,6 +7,7 @@ import { getAuthToken } from '../../src/api/auth/token.provider';
 import { CreateBookingResponse } from '../../src/api/types/booking';
 import { parseBody } from '../../src/api/contract';
 import { BookingSchema } from '../../src/api/schemas/booking.schema';
+import { config } from '../../src/core/config';
 
 test.describe('Restful Booker API @ Booking CRUD', () => {
   let fixtureContext: APIRequestContext;
@@ -15,15 +17,17 @@ test.describe('Restful Booker API @ Booking CRUD', () => {
   const bookingIds = new Set<number>();
 
   test.beforeAll(async () => {
-    fixtureContext = await playwrightRequest.newContext();
+    // Outside test scope (beforeAll), so the api project's use.baseURL doesn't apply — the
+    // clients now build relative paths (booking/, auth), so this context needs its own baseURL.
+    fixtureContext = await playwrightRequest.newContext({ baseURL: config.apiBaseURL });
     fixtureClient = new BookingClient(fixtureContext);
     const response = await fixtureClient.createBooking(bookingData.validBooking());
     bookingIds.add(response.bookingid);
     bookingPrec = response;
   });
 
-  test.beforeEach(async ({ request }) => {
-    bookingSteps = new BookingSteps(request);
+  test.beforeEach(async ({ bookingSteps: steps }) => {
+    bookingSteps = steps;
   });
 
   async function createTrackedBooking(booking: ReturnType<typeof bookingData.validBooking>) {

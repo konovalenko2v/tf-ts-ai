@@ -1,12 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
-import * as dotenv from 'dotenv';
-
-// Must run before the reporter array below is evaluated: globalSetup's dotenv.config() (via
-// src/core/config.ts) runs too late for that, since Playwright locks in `reporter` by
-// synchronously evaluating this whole file first and only imports globalSetup afterwards — so
-// process.env.RP_ENDPOINT was always undefined here on a local run, silently dropping the
-// ReportPortal reporter even with RP_ENDPOINT correctly set in .env.
-dotenv.config();
+// This import's module-level dotenv.config() (src/core/config.ts) must run before the reporter
+// array below is evaluated: globalSetup's own dotenv.config() runs too late for that, since
+// Playwright locks in `reporter` by synchronously evaluating this whole file first and only
+// imports globalSetup afterwards — so process.env.RP_ENDPOINT was always undefined here on a
+// local run, silently dropping the ReportPortal reporter even with RP_ENDPOINT set in .env.
+import { config } from './src/core/config';
 
 export default defineConfig({
   testDir: './tests',
@@ -81,12 +79,32 @@ export default defineConfig({
       // shape). A single shared testDir + testMatch per project is the same scheme
       // ui-automation-tests (wlt) uses, and gutter-icon runs resolve correctly there.
       testMatch: '**/tests/unit/**/*.spec.ts',
+      // contract.spec.ts has its own project below — split out so it shows as its own row in
+      // ReportPortal/Allure (grouped by project name) instead of being buried among the 140
+      // other unit tests. Same testDir/testMatch scheme, so the WebStorm gutter-icon note above
+      // still applies; testIgnore is what keeps the two projects from double-running this file.
+      testIgnore: '**/tests/unit/contract.spec.ts',
+      fullyParallel: true,
+    },
+    {
+      // Response-contract (Zod schema) validation for src/api/contract.ts and src/api/schemas/
+      // — pure unit-style tests (mocked APIResponse, no network), split from the `unit` project
+      // above purely for reporting: the CLAUDE.md-documented `contract` failure category in
+      // failure-analysis/classify.ts already treats these as a distinct concern, and it was
+      // invisible in ReportPortal/Allure while lumped into `unit`'s 140 tests.
+      name: 'contract',
+      testMatch: '**/tests/unit/contract.spec.ts',
       fullyParallel: true,
     },
     {
       name: 'api',
       testMatch: '**/tests/api/**/*.spec.ts',
       fullyParallel: false,
+      // auth.client.ts / booking.client.ts build relative paths against this. BookStoreClient
+      // (a goal-evolution driver, src/goal-evolution/goals/book-store-*.ts) stays on absolute
+      // URLs against config.bookStoreHost — a different host — so baseURL is simply unused for
+      // those calls, not a conflict.
+      use: { baseURL: config.apiBaseURL },
     },
     {
       name: 'graphql',

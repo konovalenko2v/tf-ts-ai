@@ -589,16 +589,33 @@ driver that hardcoded it would pass once and rot on the next run; for `book-stor
 accept the username as a parameter rather than hardcoding one, so the harness (not the driver) controls the
 identity the oracle checks — before compiling and running the oracle spec.
 
-**Stopping and reporting when a goal can't be reached.** A goal fails to resolve for one of three distinct
+**Stopping and reporting when a goal can't be reached.** A goal fails to resolve for one of four distinct
 reasons, and `run.ts` reports which: (1) generation itself hangs — bounded by a per-attempt wall-clock timeout on
 the Claude CLI call (`ATTEMPT_TIMEOUT_MS`, via `cli-fallback.ts`'s `CliTimeoutError` — a timeout is re-thrown
 immediately rather than silently falling through to the Gemini fallback tiers, so it isn't misreported as "the
 model failed"); (2) the driver comes back but violates its contract (writes its own `expect(...)`, hardcodes an
 identity) — not retried, since a second generation attempt is unlikely to fix a rule violation differently; (3)
-the driver is clean but the **oracle** fails — retried up to `MAX_ATTEMPTS` (2, kept low deliberately: each
-`book-store-register-user` attempt registers a real user on demoqa.com), and the final report explicitly points at
-the goal's `pageKnowledgeFile` as the likely cause, since a clean driver failing the oracle repeatedly is usually
-the page-knowledge file being wrong or stale, not an agent mistake.
+the driver fails to compile (`npx tsc --noEmit`) — retried up to `MAX_ATTEMPTS`, and (unlike before) the actual
+compiler error is fed into the retry's prompt, see "Feedback loop" below; (4) the driver compiles but the
+**oracle** fails — also retried up to `MAX_ATTEMPTS` (2, kept low deliberately: each `book-store-register-user`
+attempt registers a real user on demoqa.com), and the final report explicitly points at the goal's
+`pageKnowledgeFile` as the likely cause, since a clean driver failing the oracle repeatedly is usually the
+page-knowledge file being wrong or stale, not an agent mistake.
+
+**Feedback loop in goal-evolution.** Before this, a retry (reason 3 or 4 above) re-sent the exact same prompt —
+the model never saw why its previous attempt failed, so a mistake in the _approach_ (not the goal) could repeat
+identically. Now `run.ts` captures the real failure text (the `tsc` error, or the oracle spec's failure output)
+and `propose-driver.ts` folds it into the next attempt's prompt as a "Your previous attempt failed" block. This
+is orthogonal to which layer the model chose (UI vs. API) or how many steps it decided to take — it doesn't
+constrain _how_ the goal gets solved, only gives the model its own last mistake back before it tries again. That
+also means it applies the same way to any goal added to `REGISTRY` later, prose-only or not: the loop reads
+`lastFailure` off whatever `tsc`/Playwright actually printed, never anything specific to one goal's steps.
+One real, already-documented case this would have caught: `book-store-remove-books`'s second attempt had the
+right approach (login, per-row `href`-based ISBN extraction, no bulk-delete shortcut) but used
+`page.waitForFunction`, unavailable under this repo's `tsconfig` (`lib: ["ES2022"]`, no `dom`) — a human fixed
+that one wait by hand because nothing surfaced the compiler error back to a further attempt.
+This does **not** help contract violations (reason 2) — a rule violation isn't a mistake a retry with more
+context is likely to fix differently, so those still fail fast without a retry.
 
 **Three goals, three things each proves:**
 

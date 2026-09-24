@@ -23,6 +23,10 @@ const gqlHost = envUrl('GRAPHQL_BASE_URL', 'https://eu-central-1-shared-euc1-02.
 
 export const config = {
   host: apiHost,
+  /** Trailing-slash form for `use.baseURL` / `request.newContext({ baseURL })` — client paths
+   *  must be relative with no leading slash (`booking/`, not `/booking/`) or the leading slash
+   *  resets to the origin and drops `host`'s own path, if it has one. */
+  apiBaseURL: `${apiHost}/`,
   gqlHost,
 
   /** Base of the DemoQA UI deployment — also the Book Store API's host. */
