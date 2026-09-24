@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../src/api/fixtures';
 import { GraphQlClient } from '../../src/graphql/client';
 import { readQuery } from '../../src/core/file-util';
 
@@ -15,8 +15,9 @@ test.describe('Hygraph GraphQL API @ Positive queries', () => {
     return body.data.products[0].id;
   }
 
-  test('A Relay-style connection query with pagination/limit returns pageInfo, edges and an aggregate count', async ({ request }) => {
-    const client = new GraphQlClient(request);
+  test('A Relay-style connection query with pagination/limit returns pageInfo, edges and an aggregate count', async ({
+    graphqlClient: client,
+  }) => {
     const response = await client.execute(LIST, { numPages: 2 });
     const body = await response.json();
 
@@ -27,8 +28,7 @@ test.describe('Hygraph GraphQL API @ Positive queries', () => {
     expect(body.data.productsConnection.aggregate.count).toBeGreaterThan(2);
   });
 
-  test("A query for a single entity by ID returns that entity's fields", async ({ request }) => {
-    const client = new GraphQlClient(request);
+  test("A query for a single entity by ID returns that entity's fields", async ({ graphqlClient: client }) => {
     const productId = await firstProductId(client);
 
     const response = await client.execute(SINGLE_ENTITY_BY_ID, { id: productId });
@@ -40,8 +40,9 @@ test.describe('Hygraph GraphQL API @ Positive queries', () => {
     expect(body.data.product.price).toBeGreaterThan(0);
   });
 
-  test('A query using GraphQL variables (not string interpolation) returns the entity matching the variable', async ({ request }) => {
-    const client = new GraphQlClient(request);
+  test('A query using GraphQL variables (not string interpolation) returns the entity matching the variable', async ({
+    graphqlClient: client,
+  }) => {
     const productId = await firstProductId(client);
 
     const response = await client.execute(USING_GRAPHQL_VARIABLES, { id: productId });
@@ -52,8 +53,9 @@ test.describe('Hygraph GraphQL API @ Positive queries', () => {
     expect(body.data.product.name).toBeTruthy();
   });
 
-  test('A query with nested fields across types (product -> categories -> name) resolves the relation', async ({ request }) => {
-    const client = new GraphQlClient(request);
+  test('A query with nested fields across types (product -> categories -> name) resolves the relation', async ({
+    graphqlClient: client,
+  }) => {
     const productId = await firstProductId(client);
 
     const response = await client.execute(WITH_NESTED_FIELDS_ACROSS_TYPES, { id: productId });

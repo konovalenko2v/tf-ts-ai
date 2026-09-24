@@ -20,7 +20,7 @@ import { Goal } from './goal';
 
 const PERSONA_FILE = path.join(__dirname, '../../ai-agents/personas/goal-solver.md');
 
-function buildPrompt<TCtx>(goal: Goal<TCtx>): string {
+function buildPrompt<TCtx>(goal: Goal<TCtx>, priorFailure?: string): string {
   const persona = fs.readFileSync(PERSONA_FILE, 'utf-8');
   const pageKnowledge = fs.readFileSync(path.join(__dirname, '../..', goal.pageKnowledgeFile), 'utf-8');
 
@@ -29,6 +29,19 @@ function buildPrompt<TCtx>(goal: Goal<TCtx>): string {
     '',
     goal.description,
     '',
+    ...(priorFailure
+      ? [
+          '## Your previous attempt failed',
+          '',
+          "You already tried this goal once and it didn't work. Here is exactly what went wrong —",
+          'read it and write a driver that avoids the same mistake, rather than repeating the same',
+          'approach:',
+          '```',
+          priorFailure,
+          '```',
+          '',
+        ]
+      : []),
     `Page-knowledge file (${goal.pageKnowledgeFile}) — this is your ground truth for locators,`,
     'endpoints, and behavior; you have no browser or network access of your own to explore with:',
     '```markdown',
@@ -58,6 +71,6 @@ function buildPrompt<TCtx>(goal: Goal<TCtx>): string {
   return `${persona}\n\n---\n\n## Task\n\n${task}`;
 }
 
-export function proposeDriver<TCtx>(goal: Goal<TCtx>, timeoutMs?: number): void {
-  runAgenticEdit(buildPrompt(goal), undefined, timeoutMs, 'goal-evolution');
+export function proposeDriver<TCtx>(goal: Goal<TCtx>, timeoutMs?: number, priorFailure?: string): void {
+  runAgenticEdit(buildPrompt(goal, priorFailure), undefined, timeoutMs, 'goal-evolution');
 }

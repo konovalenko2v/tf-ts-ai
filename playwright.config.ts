@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { config } from './src/core/config';
 
 export default defineConfig({
   testDir: './tests',
@@ -69,12 +70,32 @@ export default defineConfig({
       // shape). A single shared testDir + testMatch per project is the same scheme
       // ui-automation-tests (wlt) uses, and gutter-icon runs resolve correctly there.
       testMatch: '**/tests/unit/**/*.spec.ts',
+      // contract.spec.ts has its own project below — split out so it shows as its own row in
+      // ReportPortal/Allure (grouped by project name) instead of being buried among the 140
+      // other unit tests. Same testDir/testMatch scheme, so the WebStorm gutter-icon note above
+      // still applies; testIgnore is what keeps the two projects from double-running this file.
+      testIgnore: '**/tests/unit/contract.spec.ts',
+      fullyParallel: true,
+    },
+    {
+      // Response-contract (Zod schema) validation for src/api/contract.ts and src/api/schemas/
+      // — pure unit-style tests (mocked APIResponse, no network), split from the `unit` project
+      // above purely for reporting: the CLAUDE.md-documented `contract` failure category in
+      // failure-analysis/classify.ts already treats these as a distinct concern, and it was
+      // invisible in ReportPortal/Allure while lumped into `unit`'s 140 tests.
+      name: 'contract',
+      testMatch: '**/tests/unit/contract.spec.ts',
       fullyParallel: true,
     },
     {
       name: 'api',
       testMatch: '**/tests/api/**/*.spec.ts',
       fullyParallel: false,
+      // auth.client.ts / booking.client.ts build relative paths against this. BookStoreClient
+      // (a goal-evolution driver, src/goal-evolution/goals/book-store-*.ts) stays on absolute
+      // URLs against config.bookStoreHost — a different host — so baseURL is simply unused for
+      // those calls, not a conflict.
+      use: { baseURL: config.apiBaseURL },
     },
     {
       name: 'graphql',

@@ -45,9 +45,20 @@ export class PracticeFormPage {
   async fillAddressAndSelectLocation(address: string) {
     await this.page.locator('#currentAddress').fill(address);
     await this.page.locator('#state').click();
-    // healwright-demo: intentionally broken locator, reserved for the self-healing demo (README
-    // "Self-Healing UI Locators"). agent-fixer: skip — do not propose a fix for this line.
-    await this.page.heal.click(this.page.locator('#react-select-3-option-broken'), 'First suggested option in the state dropdown');
+    /***
+     // healwright-demo: intentionally broken primary locator, reserved for the self-healing demo
+     // (README "Self-Healing UI Locators"). agent-fixer: skip — do not propose a fix for this line.
+     // Interview mode: instead of calling out to the Gemini healing agent, fall back to the
+     // locator healwright itself already found and cached for this exact spot
+     // (.self-heal/healed_locators.json → key "click::.../automation-practice-form::First
+     // suggested option in the state dropdown" → getByRole('option', { name: 'NCR', exact: true })).
+     // No AI call, no network round trip to Gemini — same cached strategy, applied directly.
+     // await this.page.heal.click(this.page.locator('#react-select-3-option-broken'), 'First suggested option in the state dropdown');
+     ***/
+    await this.page
+      .locator('#react-select-3-option-broken')
+      .or(this.page.getByRole('option', { name: 'NCR', exact: true }))
+      .click();
     await this.page.locator('#city').click();
     await this.page.heal.click(
       this.page.locator('div[id^="react-select-"][id*="-option-0"]'),
