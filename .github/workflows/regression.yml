@@ -305,22 +305,19 @@ jobs:
           path: allure-results
           merge-multiple: true
 
-      # Same pattern as the Allure download above — one directory per shard, merged. Feeds the
-      # dashboard step below; the dashboard namespaces testId by runId before dedupe precisely
-      # because these are the raw per-shard files (see dashboard.ts's namespaceTestIds comment).
-      - name: Download observability data
-        if: always()
-        continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: observability-*
-          path: .observability
-          merge-multiple: true
-
       # Informational only, not a merge gate — c8/V8 coverage over the unit project only (the
       # only project with in-repo src/ code to instrument; api/graphql/ui exercise external
       # services, not this codebase). Runs regardless of shard outcome so a PR still gets a
       # coverage number even when an unrelated api/ui test on some shard is red.
+      #
+      # Runs BEFORE "Download observability data" below, on purpose: `npm run coverage` invokes
+      # `playwright test --project=unit --project=contract` for real, which writes its own
+      # .observability/run-*.jsonl via the same reporter every other run uses — indistinguishable
+      # by filename from a shard's file. Downloading the shard files first and running coverage
+      # second silently inflated the dashboard's totals by this job's own re-run of the 172
+      # unit+contract tests (double-counted on top of what test-shard already ran and uploaded).
+      # Order now guarantees .observability/ holds only the two shards' files when the dashboard
+      # step reads it.
       - name: Coverage report (unit)
         if: always()
         # pipefail: without it the step's exit code comes from `tee`, which always succeeds — a
@@ -337,6 +334,26 @@ jobs:
             tail -n 20 coverage-output.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # rm -rf first: coverage above just wrote its own .observability/run-*.jsonl (same reporter,
+      # indistinguishable filename from a shard's) — merge-multiple only adds files, it doesn't
+      # clear the directory first, so without this the dashboard step would double-count that run
+      # on top of the two shards' real files downloaded here. Same pattern as the Allure download
+      # below — one directory per shard, merged. Feeds the dashboard step further down; the
+      # dashboard namespaces testId by runId before dedupe precisely because these are the raw
+      # per-shard files (see dashboard.ts's namespaceTestIds comment).
+      - name: Clear observability dir before downloading shard files
+        if: always()
+        run: rm -rf .observability
+
+      - name: Download observability data
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: observability-*
+          path: .observability
+          merge-multiple: true
 
       - name: Generate Allure Report
         if: always()
