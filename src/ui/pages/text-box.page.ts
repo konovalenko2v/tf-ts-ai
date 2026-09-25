@@ -1,8 +1,9 @@
 import { Locator } from '@playwright/test';
 import { HealPage } from 'healwright';
 import { config } from '../../core/config';
+import { BasePage } from './base.page';
 
-export class TextBoxPage {
+export class TextBoxPage extends BasePage {
   readonly userNameInput: Locator;
   readonly userEmailInput: Locator;
   readonly currentAddressInput: Locator;
@@ -10,7 +11,8 @@ export class TextBoxPage {
   readonly submitButton: Locator;
   readonly output: Locator;
 
-  constructor(private readonly page: HealPage) {
+  constructor(page: HealPage) {
+    super(page);
     this.userNameInput = page.locator('#userName');
     this.userEmailInput = page.locator('#userEmail');
     this.currentAddressInput = page.locator('#currentAddress');
@@ -20,8 +22,7 @@ export class TextBoxPage {
   }
 
   async navigate() {
-    await this.page.route(/doubleclick|googlesyndication|adsbygoogle/, (route) => route.abort());
-    await this.page.goto(config.textBoxHost);
+    await this.open(config.textBoxHost);
   }
 
   async fillForm(fields: { name?: string; email?: string; currentAddress?: string; permanentAddress?: string }) {

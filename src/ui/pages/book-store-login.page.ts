@@ -1,15 +1,17 @@
 import { Locator } from '@playwright/test';
 import { HealPage } from 'healwright';
 import { config } from '../../core/config';
+import { BasePage } from './base.page';
 
-export class BookStoreLoginPage {
+export class BookStoreLoginPage extends BasePage {
   readonly userNameInput: Locator;
   readonly passwordInput: Locator;
   readonly loginButton: Locator;
   readonly loggedInUserName: Locator;
   readonly profileRows: Locator;
 
-  constructor(private readonly page: HealPage) {
+  constructor(page: HealPage) {
+    super(page);
     this.userNameInput = page.locator('#userName');
     this.passwordInput = page.locator('#password');
     this.loginButton = page.locator('#login');
@@ -18,8 +20,7 @@ export class BookStoreLoginPage {
   }
 
   async navigate() {
-    await this.page.route(/doubleclick|googlesyndication|adsbygoogle/, (route) => route.abort());
-    await this.page.goto(`${config.bookStoreHost}/login`);
+    await this.open(`${config.bookStoreHost}/login`);
   }
 
   async login(userName: string, password: string) {

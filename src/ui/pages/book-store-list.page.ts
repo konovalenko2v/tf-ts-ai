@@ -1,6 +1,7 @@
 import { Locator } from '@playwright/test';
 import { HealPage } from 'healwright';
 import { config } from '../../core/config';
+import { BasePage } from './base.page';
 
 // See docs/page-knowledge/book-store-list.md — the detail-view field panel shown for every book.
 const DETAIL_FIELD_WRAPPERS = [
@@ -14,22 +15,22 @@ const DETAIL_FIELD_WRAPPERS = [
   'website-wrapper',
 ] as const;
 
-export class BookStoreListPage {
+export class BookStoreListPage extends BasePage {
   readonly searchBox: Locator;
   readonly rows: Locator;
   // See docs/page-knowledge/book-store-list.md — the value's own id is a leftover template
   // artifact (`userName-value`), scoped inside #pages-wrapper to guard against reuse elsewhere.
   readonly pagesValue: Locator;
 
-  constructor(private readonly page: HealPage) {
+  constructor(page: HealPage) {
+    super(page);
     this.searchBox = page.locator('#searchBox');
     this.rows = page.locator('tbody tr');
     this.pagesValue = page.locator('#pages-wrapper #userName-value');
   }
 
   async navigate() {
-    await this.page.route(/doubleclick|googlesyndication|adsbygoogle/, (route) => route.abort());
-    await this.page.goto(config.bookStoreListHost);
+    await this.open(config.bookStoreListHost);
   }
 
   async search(query: string) {

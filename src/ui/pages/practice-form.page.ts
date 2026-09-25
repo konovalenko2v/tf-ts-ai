@@ -1,17 +1,18 @@
 import { Locator } from '@playwright/test';
 import { HealPage } from 'healwright';
 import { config } from '../../core/config';
+import { BasePage } from './base.page';
 
-export class PracticeFormPage {
+export class PracticeFormPage extends BasePage {
   readonly modalTitle: Locator;
 
-  constructor(private readonly page: HealPage) {
+  constructor(page: HealPage) {
+    super(page);
     this.modalTitle = page.locator('#example-modal-sizes-title-lg');
   }
 
   async navigate() {
-    await this.page.route(/doubleclick|googlesyndication|adsbygoogle/, (route) => route.abort());
-    await this.page.goto(config.uiHost);
+    await this.open(config.uiHost);
   }
 
   async fillMainPersonalDetails(firstName: string, lastName: string, email: string, phone: string) {

@@ -73,7 +73,10 @@ npm run ai-usage-report [-- --json]   # per-caller/per-model AI cost/token summa
    `chromium.launch({ headless: true })` or an ad-hoc script instead. See
    `ai-agents/personas/test-developer.md` (hard rule, also reinforced in `goal-solver.md`).
 2. **Never write a new abstraction from scratch.** Reuse existing `clients`/`steps`/`pages` —
-   e.g. reach for `src/api/auth/token.provider.ts`, don't fetch a token yourself. See
+   e.g. reach for `src/api/auth/token.provider.ts`, don't fetch a token yourself. A new UI page
+   object extends `src/ui/pages/base.page.ts` (`open()`/`blockAds()` only — it does not touch how
+   pages hold or call locators, and `heal.click(this.page.locator(...))` call sites must stay
+   matched literally for `src/agent-fixer/run.ts` to find and patch them). See
    `ai-agents/personas/test-developer.md` ("Hard rule").
 3. **goal-evolution has a strict agent/oracle split.** The agent (`goal-solver`) writes only a
    client/Page Object + `achieve(...)` — never a spec file, never `expect(...)`. The success
@@ -90,6 +93,12 @@ npm run ai-usage-report [-- --json]   # per-caller/per-model AI cost/token summa
 6. **Check `docs/page-knowledge/<page>.md` before opening a browser** for a new UI ticket. Write
    the page object/test from the file if it already answers what's needed; update the file in the
    same commit if you had to explore live.
+7. **No hardcoded waits** (`page.waitForTimeout(ms)`) in a page object or step — use `waitFor()`,
+   `waitForURL()`, `waitForResponse()`, or a Locator's auto-waiting assertion instead. The one
+   named exception is `book-store-profile.page.ts`'s bounded delete-confirmation poll: it can't use
+   an assertion helper because a goal-evolution driver must never author the success check itself
+   (see `src/goal-evolution/goal.ts`'s header comment) — it throws after 20 tries rather than
+   hanging, which is what makes it a poll, not an unbounded sleep.
 
 ## Other notes
 

@@ -1,19 +1,20 @@
 import { Locator } from '@playwright/test';
 import { HealPage } from 'healwright';
 import { config } from '../../core/config';
+import { BasePage } from './base.page';
 
-export class CheckBoxPage {
+export class CheckBoxPage extends BasePage {
   readonly homeExpandToggle: Locator;
   readonly result: Locator;
 
-  constructor(private readonly page: HealPage) {
+  constructor(page: HealPage) {
+    super(page);
     this.homeExpandToggle = page.locator('.rc-tree-treenode', { hasText: 'Home' }).first().locator('.rc-tree-switcher');
     this.result = page.locator('#result');
   }
 
   async navigate() {
-    await this.page.route(/doubleclick|googlesyndication|adsbygoogle/, (route) => route.abort());
-    await this.page.goto(config.checkBoxHost);
+    await this.open(config.checkBoxHost);
   }
 
   async expandAll() {
