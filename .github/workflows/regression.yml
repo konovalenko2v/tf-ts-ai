@@ -5,6 +5,12 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      rp_mode:
+        description: 'ReportPortal launch mode'
+        type: choice
+        default: DEFAULT
+        options: [DEFAULT, DEBUG]
   pull_request:
     branches: [master]
 
@@ -68,6 +74,9 @@ jobs:
           RP_API_KEY: ${{ secrets.RP_API_KEY }}
           RP_PROJECT: ${{ vars.RP_PROJECT }}
           RP_LAUNCH: 'tf-ts-ai CI #${{ github.run_number }}'
+          # workflow_dispatch only — push/pull_request never set this input, so it's '' there and
+          # start-launch.ts's RP_MODE check falls through to DEFAULT, same as today.
+          RP_MODE: ${{ inputs.rp_mode }}
 
   # Sharding example (shard count = 1 for now — a real split just raises `shard-count` below).
   # This job runs the suite in N parallel slices; `test` (further down) is the aggregate that
@@ -184,6 +193,10 @@ jobs:
           RP_API_KEY: ${{ secrets.RP_API_KEY }}
           RP_PROJECT: ${{ vars.RP_PROJECT }}
           RP_LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
+          # Must match rp-launch-start's RP_MODE — playwright.config.ts's own reporter mode is
+          # irrelevant here since every shard attaches to the launch rp-launch-start already
+          # created (via RP_LAUNCH_ID above), but harmless to set the same way regardless.
+          RP_MODE: ${{ inputs.rp_mode }}
 
       - name: Failure analysis
         if: always()
@@ -426,13 +439,19 @@ jobs:
         if: always() && needs.rp-launch-start.outputs.launch_id != ''
         run: |
           RP_ORIGIN="${RP_ENDPOINT%/api/v2}"
-          LAUNCH_URL="${RP_ORIGIN}/ui/#${RP_PROJECT}/launches/all/${LAUNCH_ID}"
+          # DEBUG-mode launches live under userdebug, not launches — see start-launch.ts's RP_MODE.
+          if [ "$RP_MODE" = "DEBUG" ]; then
+            LAUNCH_URL="${RP_ORIGIN}/ui/#${RP_PROJECT}/userdebug/all/${LAUNCH_ID}"
+          else
+            LAUNCH_URL="${RP_ORIGIN}/ui/#${RP_PROJECT}/launches/all/${LAUNCH_ID}"
+          fi
           echo "RP_LAUNCH_URL=${LAUNCH_URL}" >> "$GITHUB_ENV"
           echo "🔗 [ReportPortal launch](${LAUNCH_URL})" >> "$GITHUB_STEP_SUMMARY"
         env:
           RP_ENDPOINT: ${{ vars.RP_ENDPOINT }}
           RP_PROJECT: ${{ vars.RP_PROJECT }}
           LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
+          RP_MODE: ${{ inputs.rp_mode }}
 
       # deploy (a separate job further down, needs: test) publishes to Pages AFTER this job
       # finishes — the live URL doesn't exist yet when this step runs, so it can't be linked here.
