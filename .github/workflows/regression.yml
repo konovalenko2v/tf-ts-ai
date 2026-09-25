@@ -242,6 +242,13 @@ jobs:
     if: always()
     needs: test-shard
     runs-on: ubuntu-latest
+    # Top-level permissions grants contents: read/pages: write/id-token: write only — the PR
+    # comment step below (posting a link to the report artifact) needs pull-requests: write too.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -363,6 +370,34 @@ jobs:
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: 'allure-report'
+
+      # deploy (below) is deliberately skipped on pull_request — the github-pages environment's
+      # branch protection rejects any deploy attempt from a PR merge ref regardless of test
+      # outcome, so there is no live Pages URL to link to on a PR. The report (Allure + this
+      # dashboard) is still built and uploaded above on every run, red or green — this just makes
+      # it reachable from the PR itself instead of requiring someone to know to look in the Actions
+      # tab. One comment per run (search-then-update), not one per push, so re-running doesn't pile
+      # up duplicate comments on a long-lived PR.
+      - name: Comment PR with report download link
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          MARKER="<!-- report-artifact-link -->"
+          BODY="${MARKER}
+          📊 Test report (Allure + [dashboard](README.md#test-health-dashboard)) for this run: **[download from the run's Artifacts section](${RUN_URL})** — not deployed to a live Pages URL on PRs (branch protection blocks that regardless of test outcome), but built and uploaded on every run, red or green."
+
+          # gh pr view --json comments returns each comment's GraphQL node id (IC_...), not the
+          # numeric id the REST PATCH endpoint below needs — go straight to the REST issues/comments
+          # list instead, which is numeric-id-native (a PR is an issue for this API).
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+          if [ -n "$EXISTING" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${EXISTING}" -X PATCH -f body="$BODY"
+          else
+            gh pr comment "${{ github.event.pull_request.number }}" --body "$BODY"
+          fi
 
       # The real gate: without this, a red shard would still leave the required `test` check
       # green (this job's own steps above all succeed regardless of shard outcome — merging and

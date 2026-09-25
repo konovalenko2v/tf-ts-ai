@@ -440,6 +440,31 @@ constraint under "Not yet built"). A failed call logs to stderr and leaves the d
 `classifyRecovery` has no caller yet — it is meant to gate agent-fixer, which means wiring it in changes what
 gets auto-merged, so it stays uncalled until that gate is designed deliberately rather than by import.
 
+### Test Health Dashboard
+
+`src/failure-analysis/dashboard.ts` renders a second, standalone HTML page — published to
+GitHub Pages alongside the Allure report (`/dashboard/`, linked back to Allure with `↩`), not
+merged into it. One glance: passed/failed/flaky/skipped counts, failures grouped by cause (the
+same six categories and labels as the report above, reused via `CATEGORY_LABELS` — not a second
+copy), and quarantine state — currently-quarantined count plus tests proposed for quarantine
+_this run_ (honestly labelled: `quarantine-history.jsonl` doesn't persist across CI runs today,
+so this isn't yet "flaky in N of the last 10"). Self-contained (inline CSS, dark mode via
+`prefers-color-scheme`, no CDN, no JS) and read-only — it never calls `updateCandidatesFromRun`
+or writes any quarantine file.
+
+`regression.yml`'s `test` job merges every shard's `.observability/run-*.jsonl` before rendering.
+Playwright's `testId` is a stable hash of `(file, title)` — deliberately identical across shards
+for the same test — so a naive merge collides two shards' events under one key and silently drops
+half the tests; `namespaceTestIds()` prefixes each event's `testId` with its `runId` before
+anything downstream (`classify.ts`'s dedupe) sees it, fixing the merge without changing that
+module's contract for its other caller (`failure-analysis/run.ts`, always a single run file).
+
+The `deploy` job that publishes Pages is skipped on `pull_request` — the `github-pages`
+environment's branch protection rejects a deploy from a PR merge ref regardless of test outcome —
+so there is no live PR preview URL yet. The report (Allure + this dashboard) is still built and
+uploaded as a downloadable artifact on every run, red or green; the `test` job posts (and
+updates, not duplicates) a PR comment linking to it.
+
 ### Flaky-test quarantine (detection + TTL only — no merge-gate exemption yet)
 
 `quarantine.ts` extends the `allFlaky` signal `groupFailures()` already computes per run into a
