@@ -452,6 +452,13 @@ jobs:
         # as plain shell vars to every later step in the same job, no explicit passthrough needed.
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          DASHBOARD_URL="${PAGES_URL}dashboard/"
+          # README.md#anchor is NOT a relative link once rendered inside an issue/PR comment (unlike
+          # inside the file itself) — GitHub renders it as a literal relative href, which resolves
+          # against the comment's own URL (.../pull/45) to something like .../pull/README.md, a 302
+          # to nowhere. Needs the full /blob/<branch>/ URL to actually work from a comment.
+          README_URL="${{ github.server_url }}/${{ github.repository }}/blob/${{ github.head_ref }}/README.md#test-health-dashboard"
           MARKER="<!-- report-artifact-link -->"
           RP_LINE=""
           if [ -n "$RP_LAUNCH_URL" ]; then
@@ -459,7 +466,7 @@ jobs:
           🔗 [ReportPortal launch](${RP_LAUNCH_URL})"
           fi
           BODY="${MARKER}
-          📊 Test report (Allure + [dashboard](README.md#test-health-dashboard)) for this run: **[download from the run's Artifacts section](${RUN_URL})** — reliable for THIS run specifically. A live copy also deploys to Pages after this job finishes, but the Pages URL is shared across the whole repo (one site, not one per PR) — a later run on any branch overwrites it, so it may not still show this run's results by the time you look.${RP_LINE}"
+          📊 Test report: **[live dashboard](${DASHBOARD_URL})** · [live Allure](${PAGES_URL}) — deploys after this job finishes, and is shared across the whole repo (one site, not one per PR), so a later run on any branch may overwrite these before you look. For THIS run specifically, reliable regardless of later runs: **[download from the run's Artifacts section](${RUN_URL})**. ([What the dashboard shows](${README_URL}).)${RP_LINE}"
 
           # gh pr view --json comments returns each comment's GraphQL node id (IC_...), not the
           # numeric id the REST PATCH endpoint below needs — go straight to the REST issues/comments
