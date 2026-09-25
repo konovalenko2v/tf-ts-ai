@@ -1,4 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
+import * as dotenv from 'dotenv';
+
+// Must run before the reporter array below is evaluated: globalSetup's dotenv.config() (via
+// src/core/config.ts) runs too late for that, since Playwright locks in `reporter` by
+// synchronously evaluating this whole file first and only imports globalSetup afterwards — so
+// process.env.RP_ENDPOINT was always undefined here on a local run, silently dropping the
+// ReportPortal reporter even with RP_ENDPOINT correctly set in .env.
+dotenv.config();
 
 export default defineConfig({
   testDir: './tests',
