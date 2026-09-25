@@ -97,7 +97,7 @@ export default defineConfig({
       name: 'ui',
       testMatch: '**/tests/ui/**/*.spec.ts',
       timeout: 60_000,
-      use: { ...devices['Desktop Chrome'], headless: !!process.env.CI },
+      use: { ...devices['Desktop Chrome'], headless: !process.env.HEADFUL },
     },
   ],
 });
