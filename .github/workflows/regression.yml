@@ -240,7 +240,10 @@ jobs:
   # deadlock worked through earlier for pr-review) just to add a sharding example.
   test:
     if: always()
-    needs: test-shard
+    # rp-launch-start added alongside test-shard so this job can read its launch_id output (the
+    # ReportPortal launch link step below needs it) — GitHub Actions only exposes another job's
+    # outputs to jobs that list it in needs, even transitively-reached ones.
+    needs: [test-shard, rp-launch-start]
     runs-on: ubuntu-latest
     # Top-level permissions grants contents: read/pages: write/id-token: write only — the PR
     # comment step below (posting a link to the report artifact) needs pull-requests: write too.
@@ -371,6 +374,25 @@ jobs:
         with:
           path: 'allure-report'
 
+      # RP_ENDPOINT is today a placeholder (localhost:8090, docker/reportportal/) — a CI runner is
+      # a cloud VM with no route to the machine running that container, so rp-launch-start itself
+      # is skipped (see its own if:) and this step's link is a dead link until RP_ENDPOINT is
+      # replaced with a publicly-reachable address (repo variable, Settings > Secrets and
+      # variables > Actions > Variables). Kept anyway — wiring the URL shape (endpoint origin +
+      # project + launch_id, ReportPortal's own #/<project>/launches/all/<id> route) once now means
+      # the day RP_ENDPOINT becomes real, this starts working with no further workflow change.
+      - name: Build ReportPortal launch link
+        if: always() && needs.rp-launch-start.outputs.launch_id != ''
+        run: |
+          RP_ORIGIN="${RP_ENDPOINT%/api/v2}"
+          LAUNCH_URL="${RP_ORIGIN}/ui/#${RP_PROJECT}/launches/all/${LAUNCH_ID}"
+          echo "RP_LAUNCH_URL=${LAUNCH_URL}" >> "$GITHUB_ENV"
+          echo "🔗 [ReportPortal launch](${LAUNCH_URL})" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          RP_ENDPOINT: ${{ vars.RP_ENDPOINT }}
+          RP_PROJECT: ${{ vars.RP_PROJECT }}
+          LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
+
       # deploy (below) is deliberately skipped on pull_request — the github-pages environment's
       # branch protection rejects any deploy attempt from a PR merge ref regardless of test
       # outcome, so there is no live Pages URL to link to on a PR. The report (Allure + this
@@ -383,11 +405,19 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+        # RP_LAUNCH_URL itself comes from GITHUB_ENV (the "Build ReportPortal launch link" step
+        # above), not this step's own env: block — a step's GITHUB_ENV writes are already visible
+        # as plain shell vars to every later step in the same job, no explicit passthrough needed.
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           MARKER="<!-- report-artifact-link -->"
+          RP_LINE=""
+          if [ -n "$RP_LAUNCH_URL" ]; then
+            RP_LINE="
+          🔗 [ReportPortal launch](${RP_LAUNCH_URL})"
+          fi
           BODY="${MARKER}
-          📊 Test report (Allure + [dashboard](README.md#test-health-dashboard)) for this run: **[download from the run's Artifacts section](${RUN_URL})** — not deployed to a live Pages URL on PRs (branch protection blocks that regardless of test outcome), but built and uploaded on every run, red or green."
+          📊 Test report (Allure + [dashboard](README.md#test-health-dashboard)) for this run: **[download from the run's Artifacts section](${RUN_URL})** — not deployed to a live Pages URL on PRs (branch protection blocks that regardless of test outcome), but built and uploaded on every run, red or green.${RP_LINE}"
 
           # gh pr view --json comments returns each comment's GraphQL node id (IC_...), not the
           # numeric id the REST PATCH endpoint below needs — go straight to the REST issues/comments
