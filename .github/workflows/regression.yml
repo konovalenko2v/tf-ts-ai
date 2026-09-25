@@ -78,10 +78,10 @@ jobs:
           # start-launch.ts's RP_MODE check falls through to DEFAULT, same as today.
           RP_MODE: ${{ inputs.rp_mode }}
 
-  # Sharding example (shard count = 1 for now — a real split just raises `shard-count` below).
-  # This job runs the suite in N parallel slices; `test` (further down) is the aggregate that
-  # merges their reports and is what branch protection actually requires — see that job's own
-  # comment for why the names are split this way.
+  # This job runs the suite in N parallel slices (currently shard: [1, 2], shard-count: [2] below
+  # — raise both together to add more). `test` (further down) is the aggregate that merges their
+  # reports and is what branch protection actually requires — see that job's own comment for why
+  # the names are split this way.
   test-shard:
     needs: rp-launch-start
     # `needs` alone would skip this whole job when rp-launch-start is itself skipped (the normal
@@ -453,14 +453,11 @@ jobs:
           LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
           RP_MODE: ${{ inputs.rp_mode }}
 
-      # deploy (a separate job further down, needs: test) publishes to Pages AFTER this job
-      # finishes — the live URL doesn't exist yet when this step runs, so it can't be linked here.
-      # Also worth knowing: deploy now runs on every branch (widened from master-only after the
-      # environment's deployment-branch-policy was changed to '*'), but Pages serves exactly one
-      # URL per repo — whichever run deploys last wins the live site, PR or not. The artifact
-      # download link below is the only way to reliably see THIS run's report once a later run
-      # (any branch) has deployed over it. One comment per run (search-then-update), not one per
-      # push, so re-running doesn't pile up duplicate comments on a long-lived PR.
+      # deploy (a separate job further down, needs: test) is master/workflow_dispatch-only — see
+      # its own if: — so it never runs for a PR and there is no live Pages URL to link here. The
+      # run's own artifact (uploaded above) is the only way to see this PR's report. One comment
+      # per run (search-then-update), not one per push, so re-running doesn't pile up duplicate
+      # comments on a long-lived PR.
       - name: Comment PR with report download link
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
@@ -471,13 +468,6 @@ jobs:
         # as plain shell vars to every later step in the same job, no explicit passthrough needed.
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
-          DASHBOARD_URL="${PAGES_URL}dashboard/"
-          # README.md#anchor is NOT a relative link once rendered inside an issue/PR comment (unlike
-          # inside the file itself) — GitHub renders it as a literal relative href, which resolves
-          # against the comment's own URL (.../pull/45) to something like .../pull/README.md, a 302
-          # to nowhere. Needs the full /blob/<branch>/ URL to actually work from a comment.
-          README_URL="${{ github.server_url }}/${{ github.repository }}/blob/${{ github.head_ref }}/README.md#test-health-dashboard"
           MARKER="<!-- report-artifact-link -->"
           RP_LINE=""
           if [ -n "$RP_LAUNCH_URL" ]; then
@@ -485,7 +475,7 @@ jobs:
           🔗 [ReportPortal launch](${RP_LAUNCH_URL})"
           fi
           BODY="${MARKER}
-          📊 Test report: **[live dashboard](${DASHBOARD_URL})** · [live Allure](${PAGES_URL}) — deploys after this job finishes, and is shared across the whole repo (one site, not one per PR), so a later run on any branch may overwrite these before you look. For THIS run specifically, reliable regardless of later runs: **[download from the run's Artifacts section](${RUN_URL})**. ([What the dashboard shows](${README_URL}).)${RP_LINE}"
+          📊 Test report: **[download from the run's Artifacts section](${RUN_URL})** — no live Pages URL for PR runs (deploy is master-only).${RP_LINE}"
 
           # gh pr view --json comments returns each comment's GraphQL node id (IC_...), not the
           # numeric id the REST PATCH endpoint below needs — go straight to the REST issues/comments
