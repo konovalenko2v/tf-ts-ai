@@ -538,16 +538,13 @@ jobs:
           RP_PROJECT: ${{ vars.RP_PROJECT }}
           RP_LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
 
-  # Deploys on every run now, PR included — the github-pages environment's deployment branch
-  # policy was widened from master-only to '*' (gh api .../environments/github-pages/
-  # deployment-branch-policies) specifically to unblock this. One real tradeoff worth knowing:
-  # Pages has exactly one live URL per repo (https://<owner>.github.io/<repo>/), not one per PR —
-  # whichever run deploys last (any branch) is what that URL serves. Two PRs' CI running close
-  # together will each overwrite the other's live report; the artifact download link in the PR
-  # comment (see "Comment PR with report download link" above) is still the only way to see a
-  # SPECIFIC PR's report reliably once a later run has deployed over it.
+  # PR-only skip, not a failure: the github-pages environment's branch protection rejects a
+  # deploy attempt from a PR merge ref (refs/pull/N/merge) — only push/workflow_dispatch on
+  # master are allowed to publish. Gating here explicitly avoids that rejection showing up as a
+  # red "deploy" job on every PR; the Pages artifact test already uploaded is still downloadable
+  # from the run regardless.
   deploy:
-    if: always()
+    if: always() && github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
     environment:
