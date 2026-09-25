@@ -78,17 +78,125 @@ jobs:
           # start-launch.ts's RP_MODE check falls through to DEFAULT, same as today.
           RP_MODE: ${{ inputs.rp_mode }}
 
+  # Unit + contract run exactly once here, as their own job — not as a step tucked inside test's
+  # (or test-shard's) matrix, which is how they used to end up either double-run (once per shard,
+  # once again for coverage in the aggregate job) or silently skippable depending on which step
+  # order a given edit happened to leave in place. This job is the one place unit/contract tests
+  # execute, and test-shard/test (below, via needs:) can't proceed without it — so a red unit test
+  # always fails the required check, not just an informational coverage step.
+  unit:
+    needs: rp-launch-start
+    if: |
+      always() &&
+      (needs.rp-launch-start.result == 'success' || needs.rp-launch-start.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      # eslint.config.mjs treats the pre-existing `response.json()` -> any warnings as warnings, so
+      # this gate is about NEW errors only (floating promises, unsafe non-null handling): --max-warnings
+      # is deliberately not set to 0 while that backlog stands, otherwise the gate would be red on
+      # arrival and get ignored.
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      # c8 over unit+contract, --reporter=json-summary added alongside the human-readable ones
+      # specifically so coverage/coverage-summary.json exists for the dashboard step in `test`
+      # below to read — c8's own coverage run is also this job's one and only unit/contract
+      # execution (see the header comment), so there's no second run left anywhere to double-count
+      # against.
+      - name: Unit + contract tests (with coverage)
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run coverage 2>&1 | tee coverage-output.txt
+          {
+            echo "## Test coverage (unit)"
+            echo '```'
+            tail -n 20 coverage-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          RP_ENDPOINT: ${{ vars.RP_ENDPOINT }}
+          RP_API_KEY: ${{ secrets.RP_API_KEY }}
+          RP_PROJECT: ${{ vars.RP_PROJECT }}
+          RP_LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
+          RP_MODE: ${{ inputs.rp_mode }}
+
+      - name: Failure analysis
+        if: always()
+        run: npm run failure-analysis
+
+      # Same shard-artifact-naming scheme test-shard uses below (blob-report-N, allure-results-N,
+      # observability-N) — "unit" here plays the same role a shard number does, so the `test` job's
+      # existing merge-multiple downloads pick these up with no change on that side.
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: blob-report-unit
+          path: blob-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload allure results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: allure-results-unit
+          path: allure-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload observability data
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: observability-unit
+          path: .observability/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Read by the dashboard step in `test` below — the only piece of this job's coverage run
+      # that needs to survive past this job.
+      - name: Upload coverage summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-summary
+          path: coverage/coverage-summary.json
+          retention-days: 7
+          if-no-files-found: ignore
+
   # This job runs the suite in N parallel slices (currently shard: [1, 2], shard-count: [2] below
   # — raise both together to add more). `test` (further down) is the aggregate that merges their
   # reports and is what branch protection actually requires — see that job's own comment for why
   # the names are split this way.
   test-shard:
-    needs: rp-launch-start
+    needs: [rp-launch-start, unit]
     # `needs` alone would skip this whole job when rp-launch-start is itself skipped (the normal
     # case, RP_ENDPOINT unset) — always() plus the explicit result check keeps test-shard running
-    # in that case and only fails it if rp-launch-start actually ran and failed.
+    # in that case, but a failed `unit` job always blocks it: unit/contract tests are a real
+    # regression signal, not an informational side step.
     if: |
       always() &&
+      needs.unit.result == 'success' &&
       (needs.rp-launch-start.result == 'success' || needs.rp-launch-start.result == 'skipped')
     runs-on: ubuntu-latest
     strategy:
@@ -116,65 +224,43 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # tsx (every npm script here) strips types without checking them, and Playwright's own runner
-      # does the same — so nothing else in this pipeline would catch a type error before it reached
-      # master. Runs before the browser install (which takes ~1 min) so a type error fails fast.
-      # Only on shard 1: a repo-wide check, not something sharding the tests should multiply.
-      - name: Type check
-        if: matrix.shard == 1
-        run: npm run typecheck
-
-      # eslint.config.mjs treats the pre-existing `response.json()` -> any warnings as warnings, so
-      # this gate is about NEW errors only (floating promises, unsafe non-null handling): --max-warnings
-      # is deliberately not set to 0 while that backlog stands, otherwise the gate would be red on
-      # arrival and get ignored.
-      - name: Lint
-        if: matrix.shard == 1
-        run: npm run lint
-
-      - name: Format check
-        if: matrix.shard == 1
-        run: npm run format:check
-
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      # This job only ever runs api/graphql/ui now — unit + contract (typecheck/lint/format too)
+      # moved to the dedicated `unit` job above, which test-shard already `needs:`, so those specs
+      # can no longer be double-run here on top of that job's one real execution.
+      #
       # PRs run only the tests the import graph says the diff can affect (src/test-selection/) —
       # cheaper feedback on a branch that hasn't merged yet. push/workflow_dispatch against master
       # always run the full suite: a false negative on master itself is the one outcome this
       # optimization must never risk.
       #
-      # Sharding (--shard) only applies on the push/master branch below. test:affected
-      # (src/test-selection/) is a tsx wrapper that calls Playwright with its own fixed argv — it
-      # does not forward extra CLI flags — so at shard-count > 1 a PR would still run its whole
-      # affected list on every shard. Left as a known gap rather than silently running the full
-      # suite on PRs, which would reverse the affected-only optimization this comment used to
-      # describe alone. The blob reporter needed to merge shards below comes from
-      # playwright.config.ts (CI-gated), not a CLI flag here, precisely because test:affected
-      # can't be handed one.
+      # --shard is now forwarded into test:affected itself (src/test-selection/run.ts forwards
+      # extra argv verbatim) together with --project, so a PR's affected set is actually split
+      # across the 2 shards below instead of each shard re-running the whole affected list — that
+      # used to double every PR's test count (visible in the dashboard as an exact ×2 on every
+      # failure group). --pass-with-no-tests: a small affected set can leave one shard with zero
+      # matching api/graphql/ui specs for this invocation, which must stay a pass, not a failure.
       #
-      # Dependabot PRs are routed to unit-only: GitHub gives Dependabot-triggered runs a separate,
-      # normally-empty secret store (Settings > Secrets > Dependabot, not Actions) — USER_PASSWORD/
-      # BOOK_STORE_* resolve to '' there regardless of what's set under Actions. Every Dependabot
-      # diff also touches package-lock.json, one of test:affected's own FALLBACK_TRIGGERS
-      # (src/test-selection/affected-tests.ts), so it would otherwise always resolve to a full,
-      # unscoped `playwright test` run — putting `api` in globalSetup's scope and failing on the
-      # missing credential before a single test executes, not on anything the dependency bump
-      # actually changed. unit/lint/typecheck/format (this job, shard 1) still run in full and are
-      # what carries real signal for a dependency bump; api/graphql/ui exercise external services
-      # (restful-booker, demoqa, Hygraph), not the bumped package, with one known exception — a
-      # @playwright/test bump is exactly the case where the ui project would have signal that this
-      # skips. Fixing the Dependabot secret store (mirroring the 3 secrets there) would remove this
+      # Dependabot PRs get nothing to run here at all: their signal is entirely the `unit` job
+      # (typecheck/lint/format/unit/contract), which already ran unconditionally above. GitHub
+      # gives Dependabot-triggered runs a separate, normally-empty secret store (Settings > Secrets
+      # > Dependabot, not Actions) — USER_PASSWORD/BOOK_STORE_* resolve to '' there regardless of
+      # what's set under Actions — so api/graphql/ui would only fail on missing credentials, not on
+      # anything the dependency bump actually changed. One known exception this still misses: a
+      # @playwright/test bump is exactly the case where the ui project would have real signal.
+      # Fixing the Dependabot secret store (mirroring the 3 secrets there) would remove this
       # carve-out entirely; until then this keeps Dependabot PRs green on the parts credentials
       # can't gate rather than red on missing infrastructure.
       - name: Run tests
         run: |
           if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
-            npm run test:unit
+            echo "Dependabot PR — unit/contract/typecheck/lint/format already ran in the unit job; nothing else to run here."
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            npm run test:affected
+            npm run test:affected -- --project=api --project=graphql --project=ui --shard=${{ matrix.shard }}/${{ matrix.shard-count }}
           else
-            npm test -- --shard=${{ matrix.shard }}/${{ matrix.shard-count }}
+            npm test -- --project=api --project=graphql --project=ui --shard=${{ matrix.shard }}/${{ matrix.shard-count }}
           fi
         env:
           BOOKER_USERNAME: ${{ vars.BOOKER_USERNAME }}
@@ -256,7 +342,7 @@ jobs:
     # rp-launch-start added alongside test-shard so this job can read its launch_id output (the
     # ReportPortal launch link step below needs it) — GitHub Actions only exposes another job's
     # outputs to jobs that list it in needs, even transitively-reached ones.
-    needs: [test-shard, rp-launch-start]
+    needs: [unit, test-shard, rp-launch-start]
     runs-on: ubuntu-latest
     # Top-level permissions grants contents: read/pages: write/id-token: write only — the PR
     # comment step below (posting a link to the report artifact) needs pull-requests: write too.
@@ -342,46 +428,19 @@ jobs:
           path: allure-results
           merge-multiple: true
 
-      # Informational only, not a merge gate — c8/V8 coverage over the unit project only (the
-      # only project with in-repo src/ code to instrument; api/graphql/ui exercise external
-      # services, not this codebase). Runs regardless of shard outcome so a PR still gets a
-      # coverage number even when an unrelated api/ui test on some shard is red.
-      #
-      # Runs BEFORE "Download observability data" below, on purpose: `npm run coverage` invokes
-      # `playwright test --project=unit --project=contract` for real, which writes its own
-      # .observability/run-*.jsonl via the same reporter every other run uses — indistinguishable
-      # by filename from a shard's file. Downloading the shard files first and running coverage
-      # second silently inflated the dashboard's totals by this job's own re-run of the 172
-      # unit+contract tests (double-counted on top of what test-shard already ran and uploaded).
-      # Order now guarantees .observability/ holds only the two shards' files when the dashboard
-      # step reads it.
-      - name: Coverage report (unit)
+      # Coverage now runs exactly once, inside the `unit` job — this just picks up that job's
+      # coverage-summary.json artifact (json-summary reporter, alongside the human-readable ones)
+      # for the dashboard step below to read. continue-on-error: a PR should still get its report
+      # even if the unit job's coverage upload was skipped for some reason (e.g. that job failed
+      # before reaching its own upload step) — the dashboard treats a missing file as "n/a", not
+      # a hard failure.
+      - name: Download coverage summary
         if: always()
-        # pipefail: without it the step's exit code comes from `tee`, which always succeeds — a
-        # coverage run that crashed outright would still report as a green step with an empty
-        # summary. The report itself is informational (no threshold gate), but "the tool failed to
-        # run" and "the tool ran and found low coverage" must not look identical.
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run coverage 2>&1 | tee coverage-output.txt
-          {
-            echo "## Test coverage (unit)"
-            echo '```'
-            tail -n 20 coverage-output.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # rm -rf first: coverage above just wrote its own .observability/run-*.jsonl (same reporter,
-      # indistinguishable filename from a shard's) — merge-multiple only adds files, it doesn't
-      # clear the directory first, so without this the dashboard step would double-count that run
-      # on top of the two shards' real files downloaded here. Same pattern as the Allure download
-      # below — one directory per shard, merged. Feeds the dashboard step further down; the
-      # dashboard namespaces testId by runId before dedupe precisely because these are the raw
-      # per-shard files (see dashboard.ts's namespaceTestIds comment).
-      - name: Clear observability dir before downloading shard files
-        if: always()
-        run: rm -rf .observability
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: coverage-summary
+          path: coverage
 
       - name: Download observability data
         if: always()
@@ -492,8 +551,12 @@ jobs:
       # reporting on a failed run is exactly when a human needs to see the report). Placed after
       # publishing so the report still comes out on a red run, same always()-then-gate pattern the
       # single-job version used with its own `if: always()` steps.
+      # needs.unit is checked explicitly even though test-shard's own if: already refuses to start
+      # (leaving it 'skipped', which also fails this !=  'success' check) when unit failed — this
+      # makes the real reason a red run shows up as ("unit failed" vs "a shard failed") rather than
+      # relying on that indirection to still be true after some future edit to test-shard's if:.
       - name: Gate on shard results
-        if: needs.test-shard.result != 'success'
+        if: needs.unit.result != 'success' || needs.test-shard.result != 'success'
         run: exit 1
 
       # Quarantine candidates (quarantine-candidates.json, from failure-analysis) are proposals

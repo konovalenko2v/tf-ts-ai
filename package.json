@@ -12,7 +12,7 @@
     "test:graphql": "playwright test --project=graphql",
     "test:ui": "playwright test --project=ui",
     "test:unit": "playwright test --project=unit --project=contract",
-    "coverage": "c8 --reporter=text --reporter=lcov --reporter=text-summary -o coverage playwright test --project=unit --project=contract",
+    "coverage": "c8 --reporter=text --reporter=lcov --reporter=text-summary --reporter=json-summary -o coverage playwright test --project=unit --project=contract",
     "test:affected": "tsx src/test-selection/run.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
