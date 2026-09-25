@@ -48,6 +48,10 @@ export default defineConfig({
               launch: process.env.RP_LAUNCH ?? 'tf-ts-ai',
               attributes: [{ key: 'project', value: process.env.RP_PROJECT ?? 'tf-ts-ai' }],
               description: 'tf-ts-ai regression run',
+              // RP_MODE=DEBUG routes the launch to ReportPortal's Debug page (/userdebug/all)
+              // instead of Launches — same knob for a local ad-hoc run and a CI debug run, so
+              // neither clutters the real regression launch history.
+              mode: process.env.RP_MODE === 'DEBUG' ? 'DEBUG' : 'DEFAULT',
               // Set by src/reportportal/start-launch.ts across a sharded CI run (regression.yml's
               // test-shard matrix) so every shard attaches to the SAME launch instead of each
               // starting its own — see that file's comment for why. Absent for a normal local
