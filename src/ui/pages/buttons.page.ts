@@ -1,8 +1,9 @@
 import { Locator } from '@playwright/test';
 import { HealPage } from 'healwright';
 import { config } from '../../core/config';
+import { BasePage } from './base.page';
 
-export class ButtonsPage {
+export class ButtonsPage extends BasePage {
   readonly clickMeButton: Locator;
   readonly doubleClickButton: Locator;
   readonly rightClickButton: Locator;
@@ -10,7 +11,8 @@ export class ButtonsPage {
   readonly doubleClickMessage: Locator;
   readonly rightClickMessage: Locator;
 
-  constructor(private readonly page: HealPage) {
+  constructor(page: HealPage) {
+    super(page);
     this.clickMeButton = page.getByRole('button', { name: 'Click Me', exact: true });
     this.doubleClickButton = page.locator('#doubleClickBtn');
     this.rightClickButton = page.locator('#rightClickBtn');
@@ -20,8 +22,7 @@ export class ButtonsPage {
   }
 
   async navigate() {
-    await this.page.route(/doubleclick|googlesyndication|adsbygoogle/, (route) => route.abort());
-    await this.page.goto(config.buttonsHost);
+    await this.open(config.buttonsHost);
   }
 
   async clickDynamicButton() {

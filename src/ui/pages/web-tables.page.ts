@@ -1,6 +1,7 @@
 import { Locator } from '@playwright/test';
 import { HealPage } from 'healwright';
 import { config } from '../../core/config';
+import { BasePage } from './base.page';
 
 export interface RecordFields {
   firstName: string;
@@ -11,7 +12,7 @@ export interface RecordFields {
   department: string;
 }
 
-export class WebTablesPage {
+export class WebTablesPage extends BasePage {
   readonly addButton: Locator;
   readonly searchBox: Locator;
   readonly table: Locator;
@@ -25,7 +26,8 @@ export class WebTablesPage {
   readonly submitButton: Locator;
   readonly form: Locator;
 
-  constructor(private readonly page: HealPage) {
+  constructor(page: HealPage) {
+    super(page);
     this.addButton = page.locator('#addNewRecordButton');
     this.searchBox = page.locator('#searchBox');
     this.table = page.locator('table');
@@ -41,8 +43,7 @@ export class WebTablesPage {
   }
 
   async navigate() {
-    await this.page.route(/doubleclick|googlesyndication|adsbygoogle/, (route) => route.abort());
-    await this.page.goto(config.webTablesHost);
+    await this.open(config.webTablesHost);
   }
 
   async openAddModal() {
