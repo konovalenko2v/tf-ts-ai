@@ -10,7 +10,7 @@ import { updateCandidatesFromRun, readQuarantineList, isQuarantined, QUARANTINE_
 const HEAL_EVENTS_FILE = '.self-heal/heal_events.jsonl';
 const ALLURE_RESULTS_DIR = 'allure-results';
 
-const CATEGORY_LABELS: Record<FailureCategory, string> = {
+export const CATEGORY_LABELS: Record<FailureCategory, string> = {
   config: 'Configuration (missing/invalid env var)',
   'ai-quota': 'AI provider quota exhausted (not a healing capability issue)',
   'ai-healing': 'AI healing tried and failed to recover a broken locator',

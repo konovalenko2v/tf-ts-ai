@@ -48,7 +48,7 @@ function categorize(message: string, stackTop: string[] | undefined): FailureCat
 // Playwright retries a failing test up to 3x, each producing its own TestSummaryEvent with the
 // same testId — dedupe to one row per unique test before grouping, otherwise a single flaky test
 // inflates a group's count by its retry count.
-function latestAttemptPerTest(tests: TestSummaryEvent[]): TestSummaryEvent[] {
+export function latestAttemptPerTest(tests: TestSummaryEvent[]): TestSummaryEvent[] {
   const byTestId = new Map<string, TestSummaryEvent>();
   for (const t of tests) {
     const existing = byTestId.get(t.testId);

@@ -5,6 +5,12 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      rp_mode:
+        description: 'ReportPortal launch mode'
+        type: choice
+        default: DEFAULT
+        options: [DEFAULT, DEBUG]
   pull_request:
     branches: [master]
 
@@ -68,6 +74,9 @@ jobs:
           RP_API_KEY: ${{ secrets.RP_API_KEY }}
           RP_PROJECT: ${{ vars.RP_PROJECT }}
           RP_LAUNCH: 'tf-ts-ai CI #${{ github.run_number }}'
+          # workflow_dispatch only — push/pull_request never set this input, so it's '' there and
+          # start-launch.ts's RP_MODE check falls through to DEFAULT, same as today.
+          RP_MODE: ${{ inputs.rp_mode }}
 
   # Sharding example (shard count = 1 for now — a real split just raises `shard-count` below).
   # This job runs the suite in N parallel slices; `test` (further down) is the aggregate that
@@ -184,6 +193,10 @@ jobs:
           RP_API_KEY: ${{ secrets.RP_API_KEY }}
           RP_PROJECT: ${{ vars.RP_PROJECT }}
           RP_LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
+          # Must match rp-launch-start's RP_MODE — playwright.config.ts's own reporter mode is
+          # irrelevant here since every shard attaches to the launch rp-launch-start already
+          # created (via RP_LAUNCH_ID above), but harmless to set the same way regardless.
+          RP_MODE: ${{ inputs.rp_mode }}
 
       - name: Failure analysis
         if: always()
@@ -240,8 +253,18 @@ jobs:
   # deadlock worked through earlier for pr-review) just to add a sharding example.
   test:
     if: always()
-    needs: test-shard
+    # rp-launch-start added alongside test-shard so this job can read its launch_id output (the
+    # ReportPortal launch link step below needs it) — GitHub Actions only exposes another job's
+    # outputs to jobs that list it in needs, even transitively-reached ones.
+    needs: [test-shard, rp-launch-start]
     runs-on: ubuntu-latest
+    # Top-level permissions grants contents: read/pages: write/id-token: write only — the PR
+    # comment step below (posting a link to the report artifact) needs pull-requests: write too.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -257,13 +280,37 @@ jobs:
       # continue-on-error: a shard that never uploaded (crashed before that step, or a PR run
       # with no shards at all) leaves zero matches for this pattern — the "Gate on shard results"
       # step at the end is what actually fails this job, not an empty download here.
+      # NOT merge-multiple here, unlike the allure/observability downloads below — Playwright's
+      # blob reporter names every shard's zip identically (report.zip regardless of --shard), so
+      # merge-multiple would land both shards' artifacts at the same all-blob-reports/report.zip
+      # path. GitHub downloads matched artifacts concurrently; two concurrent writes to one path
+      # raced and produced a zip merge-reports itself couldn't read ("too many bytes in the
+      # stream. expected 1519001. got at least 1522225" — one shard's byte count, the other
+      # shard's partially-overwritten content). Downloading into per-artifact subdirectories
+      # (the default without merge-multiple) avoids the collision; the next step flattens them
+      # into uniquely-named files before merge-reports runs.
       - name: Download blob reports
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: blob-report-*
-          path: all-blob-reports
-          merge-multiple: true
+          path: all-blob-reports-raw
+
+      # merge-reports only looks for zip files directly inside the directory it's given, not
+      # recursively — so the per-artifact subdirectories from the download above (blob-report-1/
+      # report.zip, blob-report-2/report.zip) have to be flattened into distinctly-named files in
+      # one flat directory first, or it reports "No report files found".
+      - name: Flatten blob reports into distinctly-named files
+        if: always()
+        run: |
+          mkdir -p all-blob-reports
+          shopt -s nullglob
+          for dir in all-blob-reports-raw/*/; do
+            name="$(basename "$dir")"
+            for zip in "$dir"*.zip; do
+              cp "$zip" "all-blob-reports/${name}.zip"
+            done
+          done
 
       # continue-on-error: a shard that crashed before writing any blob file (e.g. browser install
       # failed) legitimately leaves all-blob-reports/ empty — merge-reports on an empty directory
@@ -299,6 +346,15 @@ jobs:
       # only project with in-repo src/ code to instrument; api/graphql/ui exercise external
       # services, not this codebase). Runs regardless of shard outcome so a PR still gets a
       # coverage number even when an unrelated api/ui test on some shard is red.
+      #
+      # Runs BEFORE "Download observability data" below, on purpose: `npm run coverage` invokes
+      # `playwright test --project=unit --project=contract` for real, which writes its own
+      # .observability/run-*.jsonl via the same reporter every other run uses — indistinguishable
+      # by filename from a shard's file. Downloading the shard files first and running coverage
+      # second silently inflated the dashboard's totals by this job's own re-run of the 172
+      # unit+contract tests (double-counted on top of what test-shard already ran and uploaded).
+      # Order now guarantees .observability/ holds only the two shards' files when the dashboard
+      # step reads it.
       - name: Coverage report (unit)
         if: always()
         # pipefail: without it the step's exit code comes from `tee`, which always succeeds — a
@@ -316,6 +372,26 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # rm -rf first: coverage above just wrote its own .observability/run-*.jsonl (same reporter,
+      # indistinguishable filename from a shard's) — merge-multiple only adds files, it doesn't
+      # clear the directory first, so without this the dashboard step would double-count that run
+      # on top of the two shards' real files downloaded here. Same pattern as the Allure download
+      # below — one directory per shard, merged. Feeds the dashboard step further down; the
+      # dashboard namespaces testId by runId before dedupe precisely because these are the raw
+      # per-shard files (see dashboard.ts's namespaceTestIds comment).
+      - name: Clear observability dir before downloading shard files
+        if: always()
+        run: rm -rf .observability
+
+      - name: Download observability data
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: observability-*
+          path: .observability
+          merge-multiple: true
+
       - name: Generate Allure Report
         if: always()
         run: npx allure generate allure-results --clean -o allure-report
@@ -330,6 +406,16 @@ jobs:
         env:
           ALLURE_REPORT_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
 
+      # Second, separate page on the same Pages site (allure-report/dashboard/index.html) — must
+      # run after "Generate Allure Report" since that step's --clean wipes allure-report/ first,
+      # and before "Upload Pages artifact" since that's what ships the directory. continue-on-error:
+      # a dashboard bug must never turn the required `test` check red over a report-only page —
+      # same spirit as CLAUDE.md rule #5 for the AI review gate.
+      - name: Generate failure dashboard
+        if: always()
+        continue-on-error: true
+        run: npm run dashboard -- allure-report/dashboard
+
       - name: Setup Pages
         if: always()
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
@@ -341,6 +427,75 @@ jobs:
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: 'allure-report'
+
+      # RP_ENDPOINT is today a placeholder (localhost:8090, docker/reportportal/) — a CI runner is
+      # a cloud VM with no route to the machine running that container, so rp-launch-start itself
+      # is skipped (see its own if:) and this step's link is a dead link until RP_ENDPOINT is
+      # replaced with a publicly-reachable address (repo variable, Settings > Secrets and
+      # variables > Actions > Variables). Kept anyway — wiring the URL shape (endpoint origin +
+      # project + launch_id, ReportPortal's own #/<project>/launches/all/<id> route) once now means
+      # the day RP_ENDPOINT becomes real, this starts working with no further workflow change.
+      - name: Build ReportPortal launch link
+        if: always() && needs.rp-launch-start.outputs.launch_id != ''
+        run: |
+          RP_ORIGIN="${RP_ENDPOINT%/api/v2}"
+          # DEBUG-mode launches live under userdebug, not launches — see start-launch.ts's RP_MODE.
+          if [ "$RP_MODE" = "DEBUG" ]; then
+            LAUNCH_URL="${RP_ORIGIN}/ui/#${RP_PROJECT}/userdebug/all/${LAUNCH_ID}"
+          else
+            LAUNCH_URL="${RP_ORIGIN}/ui/#${RP_PROJECT}/launches/all/${LAUNCH_ID}"
+          fi
+          echo "RP_LAUNCH_URL=${LAUNCH_URL}" >> "$GITHUB_ENV"
+          echo "🔗 [ReportPortal launch](${LAUNCH_URL})" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          RP_ENDPOINT: ${{ vars.RP_ENDPOINT }}
+          RP_PROJECT: ${{ vars.RP_PROJECT }}
+          LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
+          RP_MODE: ${{ inputs.rp_mode }}
+
+      # deploy (a separate job further down, needs: test) publishes to Pages AFTER this job
+      # finishes — the live URL doesn't exist yet when this step runs, so it can't be linked here.
+      # Also worth knowing: deploy now runs on every branch (widened from master-only after the
+      # environment's deployment-branch-policy was changed to '*'), but Pages serves exactly one
+      # URL per repo — whichever run deploys last wins the live site, PR or not. The artifact
+      # download link below is the only way to reliably see THIS run's report once a later run
+      # (any branch) has deployed over it. One comment per run (search-then-update), not one per
+      # push, so re-running doesn't pile up duplicate comments on a long-lived PR.
+      - name: Comment PR with report download link
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # RP_LAUNCH_URL itself comes from GITHUB_ENV (the "Build ReportPortal launch link" step
+        # above), not this step's own env: block — a step's GITHUB_ENV writes are already visible
+        # as plain shell vars to every later step in the same job, no explicit passthrough needed.
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          DASHBOARD_URL="${PAGES_URL}dashboard/"
+          # README.md#anchor is NOT a relative link once rendered inside an issue/PR comment (unlike
+          # inside the file itself) — GitHub renders it as a literal relative href, which resolves
+          # against the comment's own URL (.../pull/45) to something like .../pull/README.md, a 302
+          # to nowhere. Needs the full /blob/<branch>/ URL to actually work from a comment.
+          README_URL="${{ github.server_url }}/${{ github.repository }}/blob/${{ github.head_ref }}/README.md#test-health-dashboard"
+          MARKER="<!-- report-artifact-link -->"
+          RP_LINE=""
+          if [ -n "$RP_LAUNCH_URL" ]; then
+            RP_LINE="
+          🔗 [ReportPortal launch](${RP_LAUNCH_URL})"
+          fi
+          BODY="${MARKER}
+          📊 Test report: **[live dashboard](${DASHBOARD_URL})** · [live Allure](${PAGES_URL}) — deploys after this job finishes, and is shared across the whole repo (one site, not one per PR), so a later run on any branch may overwrite these before you look. For THIS run specifically, reliable regardless of later runs: **[download from the run's Artifacts section](${RUN_URL})**. ([What the dashboard shows](${README_URL}).)${RP_LINE}"
+
+          # gh pr view --json comments returns each comment's GraphQL node id (IC_...), not the
+          # numeric id the REST PATCH endpoint below needs — go straight to the REST issues/comments
+          # list instead, which is numeric-id-native (a PR is an issue for this API).
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+          if [ -n "$EXISTING" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${EXISTING}" -X PATCH -f body="$BODY"
+          else
+            gh pr comment "${{ github.event.pull_request.number }}" --body "$BODY"
+          fi
 
       # The real gate: without this, a red shard would still leave the required `test` check
       # green (this job's own steps above all succeed regardless of shard outcome — merging and
@@ -383,8 +538,8 @@ jobs:
           RP_PROJECT: ${{ vars.RP_PROJECT }}
           RP_LAUNCH_ID: ${{ needs.rp-launch-start.outputs.launch_id }}
 
-  # PR-only skip, not a failure: the github-pages environment's branch protection rejects any
-  # deploy attempt from a PR merge ref (refs/pull/N/merge) — only push/workflow_dispatch against
+  # PR-only skip, not a failure: the github-pages environment's branch protection rejects a
+  # deploy attempt from a PR merge ref (refs/pull/N/merge) — only push/workflow_dispatch on
   # master are allowed to publish. Gating here explicitly avoids that rejection showing up as a
   # red "deploy" job on every PR; the Pages artifact test already uploaded is still downloadable
   # from the run regardless.

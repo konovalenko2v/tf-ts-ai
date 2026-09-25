@@ -1,4 +1,5 @@
 import RPClient from '@reportportal/client-javascript';
+import { LAUNCH_MODES } from '@reportportal/client-javascript/constants';
 
 // CI-only helper for merging sharded test-shard runs into one ReportPortal launch — see the
 // agent's own guidance (node_modules/@reportportal/agent-js-playwright/README.md, "Merging
@@ -17,6 +18,10 @@ async function main(): Promise<void> {
     apiKey: requireEnv('RP_API_KEY'),
     endpoint: requireEnv('RP_ENDPOINT'),
     project,
+    // mode lives on the client, not startLaunch()'s own params (see report-portal-client.js) —
+    // must match playwright.config.ts's RP_MODE-gated reporter mode, since every shard attaches
+    // to THIS launch via RP_LAUNCH_ID rather than starting its own.
+    mode: process.env.RP_MODE === 'DEBUG' ? LAUNCH_MODES.DEBUG : LAUNCH_MODES.DEFAULT,
   });
 
   const { tempId, promise } = client.startLaunch({

@@ -1,4 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
+import * as dotenv from 'dotenv';
+
+// Must run before the reporter array below is evaluated: globalSetup's dotenv.config() (via
+// src/core/config.ts) runs too late for that, since Playwright locks in `reporter` by
+// synchronously evaluating this whole file first and only imports globalSetup afterwards — so
+// process.env.RP_ENDPOINT was always undefined here on a local run, silently dropping the
+// ReportPortal reporter even with RP_ENDPOINT correctly set in .env.
+dotenv.config();
 
 export default defineConfig({
   testDir: './tests',
@@ -40,6 +48,10 @@ export default defineConfig({
               launch: process.env.RP_LAUNCH ?? 'tf-ts-ai',
               attributes: [{ key: 'project', value: process.env.RP_PROJECT ?? 'tf-ts-ai' }],
               description: 'tf-ts-ai regression run',
+              // RP_MODE=DEBUG routes the launch to ReportPortal's Debug page (/userdebug/all)
+              // instead of Launches — same knob for a local ad-hoc run and a CI debug run, so
+              // neither clutters the real regression launch history.
+              mode: process.env.RP_MODE === 'DEBUG' ? 'DEBUG' : 'DEFAULT',
               // Set by src/reportportal/start-launch.ts across a sharded CI run (regression.yml's
               // test-shard matrix) so every shard attaches to the SAME launch instead of each
               // starting its own — see that file's comment for why. Absent for a normal local
@@ -85,7 +97,7 @@ export default defineConfig({
       name: 'ui',
       testMatch: '**/tests/ui/**/*.spec.ts',
       timeout: 60_000,
-      use: { ...devices['Desktop Chrome'], headless: !!process.env.CI },
+      use: { ...devices['Desktop Chrome'], headless: !process.env.HEADFUL },
     },
   ],
 });
