@@ -459,13 +459,10 @@ half the tests; `namespaceTestIds()` prefixes each event's `testId` with its `ru
 anything downstream (`classify.ts`'s dedupe) sees it, fixing the merge without changing that
 module's contract for its other caller (`failure-analysis/run.ts`, always a single run file).
 
-The `deploy` job publishes to Pages on every run, PR included (the `github-pages` environment's
-deployment branch policy was widened from `master`-only to `*`). The tradeoff: Pages serves exactly
-one URL per repo, not one per PR — whichever run deploys last (any branch) is what that URL shows,
-so two PRs' CI running close together overwrite each other's live report. The report (Allure + this
-dashboard) is also built and uploaded as a downloadable artifact on every run, red or green; the
-`test` job posts (and updates, not duplicates) a PR comment linking to it — the reliable way to see
-one specific run's results once a later run has deployed over the live site.
+The `deploy` job publishes to Pages only on `push`/`workflow_dispatch` against `master` — a PR run
+skips it (no live Pages URL to show for a branch that hasn't merged yet). The report (Allure + this
+dashboard) is still built and uploaded as a downloadable artifact on every run, red or green; the
+`test` job posts (and updates, not duplicates) a PR comment linking to it.
 
 ### Flaky-test quarantine (detection + TTL only — no merge-gate exemption yet)
 

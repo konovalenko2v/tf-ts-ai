@@ -11,17 +11,15 @@ import { FailureGroup } from './classify';
 // which is a per-run artifact — see .gitignore), so "flaky in N of the last M runs" only works if
 // this file persists across CI runs via git itself. Each `npm run failure-analysis` run appends to
 // it and the result is meant to be committed on the run's branch/PR like any other tracked file.
-export const QUARANTINE_HISTORY_FILE = 'quarantine-history.jsonl';
+const QUARANTINE_HISTORY_FILE = 'quarantine-history.jsonl';
 export const QUARANTINE_FILE = 'quarantine.json';
 export const QUARANTINE_CANDIDATES_FILE = 'quarantine-candidates.json';
 
 // How many of the most recent runs to look back over when deciding whether a signature is flaky
 // often enough to propose for quarantine.
-export const HISTORY_WINDOW = 10;
+const HISTORY_WINDOW = 10;
 // Fraction of the window a signature must appear as all-flaky in before it's proposed.
-export const FLAKY_THRESHOLD = 0.3;
-// A confirmed quarantine entry expires after this long — see checkExpiredEntries.
-export const QUARANTINE_TTL_DAYS = 14;
+const FLAKY_THRESHOLD = 0.3;
 
 export interface QuarantineHistoryEntry {
   signature: string;

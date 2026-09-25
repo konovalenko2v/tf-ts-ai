@@ -53,9 +53,9 @@ const REVIEW_CLAUDE_EFFORT = requireProfileVar('AI_REVIEW_CLAUDE_EFFORT');
 // so pr-reviewer.ts can share ONE copy of the grammar rather than carrying a second, independently
 // edited regex for the same `- [ok|minor|major] Check: note` bullets both personas emit. Two
 // hand-maintained copies of one string format is the exact drift this repo already got burned by
-// once (see CLAUDE.local.md's branch-prefix finding). Re-exported here so existing importers of
-// reviewer-tests keep working unchanged.
-export { Severity, ReviewFinding, ReviewVerdict, renderVerdict, parseReviewVerdict } from './review-verdict';
+// once (see CLAUDE.local.md's branch-prefix finding). Re-exported here so test-evolution/run.ts
+// (the one importer) keeps working unchanged — only what it actually imports, not the whole module.
+export { ReviewVerdict, renderVerdict } from './review-verdict';
 
 export async function reviewGeneratedTest(testFilePath: string, referenceFilePath: string): Promise<ReviewVerdict> {
   const persona = fs.readFileSync(PERSONA_FILE, 'utf-8');

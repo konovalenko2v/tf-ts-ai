@@ -1,7 +1,8 @@
 // CI gate step: fail loudly if any quarantine.json entry has passed its TTL. An expired entry is
 // a decision someone must make (renew with a new expiresAt, or remove the test from quarantine so
 // its failures block the gate again) — silence here is exactly how a quarantine list turns into a
-// permanent graveyard of ignored flaky tests. See quarantine.ts's QUARANTINE_TTL_DAYS.
+// permanent graveyard of ignored flaky tests. TTL itself is per-entry (expiresAt in
+// quarantine.json, set by hand when the entry is added) — there is no repo-wide default.
 import { readQuarantineList, expiredEntries, QUARANTINE_FILE } from './quarantine';
 
 function main(): void {
