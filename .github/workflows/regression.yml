@@ -267,13 +267,37 @@ jobs:
       # continue-on-error: a shard that never uploaded (crashed before that step, or a PR run
       # with no shards at all) leaves zero matches for this pattern — the "Gate on shard results"
       # step at the end is what actually fails this job, not an empty download here.
+      # NOT merge-multiple here, unlike the allure/observability downloads below — Playwright's
+      # blob reporter names every shard's zip identically (report.zip regardless of --shard), so
+      # merge-multiple would land both shards' artifacts at the same all-blob-reports/report.zip
+      # path. GitHub downloads matched artifacts concurrently; two concurrent writes to one path
+      # raced and produced a zip merge-reports itself couldn't read ("too many bytes in the
+      # stream. expected 1519001. got at least 1522225" — one shard's byte count, the other
+      # shard's partially-overwritten content). Downloading into per-artifact subdirectories
+      # (the default without merge-multiple) avoids the collision; the next step flattens them
+      # into uniquely-named files before merge-reports runs.
       - name: Download blob reports
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: blob-report-*
-          path: all-blob-reports
-          merge-multiple: true
+          path: all-blob-reports-raw
+
+      # merge-reports only looks for zip files directly inside the directory it's given, not
+      # recursively — so the per-artifact subdirectories from the download above (blob-report-1/
+      # report.zip, blob-report-2/report.zip) have to be flattened into distinctly-named files in
+      # one flat directory first, or it reports "No report files found".
+      - name: Flatten blob reports into distinctly-named files
+        if: always()
+        run: |
+          mkdir -p all-blob-reports
+          shopt -s nullglob
+          for dir in all-blob-reports-raw/*/; do
+            name="$(basename "$dir")"
+            for zip in "$dir"*.zip; do
+              cp "$zip" "all-blob-reports/${name}.zip"
+            done
+          done
 
       # continue-on-error: a shard that crashed before writing any blob file (e.g. browser install
       # failed) legitimately leaves all-blob-reports/ empty — merge-reports on an empty directory
