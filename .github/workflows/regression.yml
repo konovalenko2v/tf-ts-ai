@@ -295,6 +295,18 @@ jobs:
           path: allure-results
           merge-multiple: true
 
+      # Same pattern as the Allure download above — one directory per shard, merged. Feeds the
+      # dashboard step below; the dashboard namespaces testId by runId before dedupe precisely
+      # because these are the raw per-shard files (see dashboard.ts's namespaceTestIds comment).
+      - name: Download observability data
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: observability-*
+          path: .observability
+          merge-multiple: true
+
       # Informational only, not a merge gate — c8/V8 coverage over the unit project only (the
       # only project with in-repo src/ code to instrument; api/graphql/ui exercise external
       # services, not this codebase). Runs regardless of shard outcome so a PR still gets a
@@ -329,6 +341,16 @@ jobs:
         run: npm run link-healed-tests
         env:
           ALLURE_REPORT_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+
+      # Second, separate page on the same Pages site (allure-report/dashboard/index.html) — must
+      # run after "Generate Allure Report" since that step's --clean wipes allure-report/ first,
+      # and before "Upload Pages artifact" since that's what ships the directory. continue-on-error:
+      # a dashboard bug must never turn the required `test` check red over a report-only page —
+      # same spirit as CLAUDE.md rule #5 for the AI review gate.
+      - name: Generate failure dashboard
+        if: always()
+        continue-on-error: true
+        run: npm run dashboard -- allure-report/dashboard
 
       - name: Setup Pages
         if: always()
