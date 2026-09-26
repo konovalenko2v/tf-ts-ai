@@ -10,6 +10,14 @@ import { FailureGroup, groupFailures, latestAttemptPerTest } from './classify';
 import { CATEGORY_LABELS } from './run';
 import { QuarantineCandidate, QuarantineEntry, expiredEntries, isQuarantined, readCandidates, readQuarantineList } from './quarantine';
 
+export interface ProjectBreakdown {
+  project: string;
+  passed: number;
+  failed: number;
+  flaky: number;
+  quarantined: number;
+}
+
 export interface DashboardData {
   generatedAt: string;
   totalTests: number;
@@ -22,6 +30,11 @@ export interface DashboardData {
   quarantinedExpiredCount: number;
   proposedForQuarantineCount: number;
   proposedForQuarantine: { signature: string; category: FailureGroup['category']; testTitlePaths: string[] }[];
+  // One row per Playwright project (api/graphql/ui/unit/contract) — "quarantined" here counts
+  // this project's tests that are ALSO in quarantine.json, an overlay on top of passed/failed/
+  // flaky rather than a separate bucket: a quarantined test still genuinely passed or failed in
+  // this run, quarantine.json only means the merge gate doesn't block on it.
+  byProject: ProjectBreakdown[];
   // null, not a missing field: c8 coverage/coverage-summary.json (unit+contract's line coverage,
   // "did any test execute this code") and Stryker's reports/mutation-summary.json (the 3 CI
   // gate modules' mutation score, "would any test have NOTICED this code breaking") are both
@@ -66,6 +79,8 @@ export function buildDashboardData(
   // candidate already promoted into quarantine.json is excluded so it doesn't show in both cards.
   const proposed = candidates.filter((c) => !c.testTitlePaths.some((p) => isQuarantined(p, quarantine)));
 
+  const byProject = projectBreakdown(latest, quarantine);
+
   return {
     generatedAt: now.toISOString(),
     totalTests: latest.length,
@@ -85,7 +100,35 @@ export function buildDashboardData(
     coveragePct,
     mutationScoreBaselinePct,
     mutationScoreCurrentPct,
+    byProject,
   };
+}
+
+// Sorted by a fixed, meaningful order rather than alphabetically or by count — unit/contract run
+// first in CI (their own `unit` job, gating test-shard) so they read first here too; api/graphql/ui
+// follow in the same order regression.yml's test-shard projects list uses. A project with zero
+// events this run (e.g. a PR whose affected-test selection skipped graphql entirely) is omitted
+// rather than shown as a misleading all-zero card.
+const PROJECT_ORDER = ['unit', 'contract', 'api', 'graphql', 'ui'];
+
+function projectBreakdown(latest: TestSummaryEvent[], quarantine: QuarantineEntry[]): ProjectBreakdown[] {
+  const byProject = new Map<string, ProjectBreakdown>();
+  for (const t of latest) {
+    const existing = byProject.get(t.project) ?? { project: t.project, passed: 0, failed: 0, flaky: 0, quarantined: 0 };
+    if (t.outcome === 'expected') existing.passed += 1;
+    else if (t.outcome === 'unexpected') existing.failed += 1;
+    else if (t.outcome === 'flaky') existing.flaky += 1;
+    if (isQuarantined(t.testTitlePath, quarantine)) existing.quarantined += 1;
+    byProject.set(t.project, existing);
+  }
+  return [...byProject.values()].sort((a, b) => {
+    const ia = PROJECT_ORDER.indexOf(a.project);
+    const ib = PROJECT_ORDER.indexOf(b.project);
+    if (ia === -1 && ib === -1) return a.project.localeCompare(b.project);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
 }
 
 function escapeHtml(value: string): string {
@@ -125,6 +168,27 @@ function renderGroup(g: FailureGroup): string {
         <pre>${escapeHtml(g.sampleMessage)}</pre>
       </details>
     </article>`;
+}
+
+function renderProjectBreakdown(byProject: ProjectBreakdown[]): string {
+  if (byProject.length === 0) return '';
+  const cards = byProject
+    .map(
+      (p) => `
+    <div class="project-card">
+      <div class="project-name">${escapeHtml(p.project)}</div>
+      <dl class="project-stats">
+        <div class="stat-passed"><dt>Passed</dt><dd>${p.passed}</dd></div>
+        <div class="stat-failed"><dt>Failed</dt><dd>${p.failed}</dd></div>
+        <div class="stat-flaky"><dt>Flaky</dt><dd>${p.flaky}</dd></div>
+        <div class="stat-quarantined"><dt>Quarantined</dt><dd>${p.quarantined}</dd></div>
+      </dl>
+    </div>`,
+    )
+    .join('');
+  return `
+  <h2>By project</h2>
+  <div class="project-grid">${cards}</div>`;
 }
 
 function renderProposed(data: DashboardData): string {
@@ -232,6 +296,20 @@ export function renderDashboard(data: DashboardData): string {
     background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
     padding: 0.75rem; overflow-x: auto; font-size: 0.75rem; margin-top: 0.5rem; white-space: pre-wrap;
   }
+  .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 2rem; }
+  .project-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1rem 1.125rem;
+  }
+  .project-name { font-family: ui-monospace, monospace; font-weight: 600; font-size: 0.9375rem; margin-bottom: 0.6rem; }
+  .project-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 0.6rem; margin: 0; }
+  .project-stats > div { display: flex; align-items: baseline; justify-content: space-between; gap: 0.4rem; }
+  .project-stats dt { font-size: 0.75rem; color: var(--muted); font-weight: 500; }
+  .project-stats dd { margin: 0; font-size: 0.9375rem; font-weight: 700; }
+  .stat-passed dd { color: var(--green); }
+  .stat-failed dd { color: var(--red); }
+  .stat-flaky dd { color: var(--amber); }
+  .stat-quarantined dd { color: var(--purple); }
   .proposed-list { list-style: none; margin: 0; padding: 0; }
   .proposed-list li {
     display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
@@ -254,6 +332,8 @@ export function renderDashboard(data: DashboardData): string {
     <div class="card coverage"><div class="num">${data.coveragePct !== null ? data.coveragePct + '%' : 'n/a'}</div><div class="label">Unit test coverage</div></div>
     <div class="card mutation"><div class="num ${mutationScoreDirection(data.mutationScoreBaselinePct, data.mutationScoreCurrentPct)}">${renderMutationScore(data.mutationScoreBaselinePct, data.mutationScoreCurrentPct)}</div><div class="label">Mutation score (gate modules)</div></div>
   </div>
+
+  ${renderProjectBreakdown(data.byProject)}
 
   <h2>Failures by cause</h2>
   ${groupsHtml}
