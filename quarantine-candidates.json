@@ -1,0 +1,18 @@
+[
+  {
+    "signature": "Error: expect(locator).toBeVisible() failed",
+    "category": "assertion",
+    "testTitlePaths": [" > ui > ui/web-tables.spec.ts > DemoQA UI @ Web Tables > Adds a new record and it appears in the table"],
+    "occurrences": 6,
+    "windowSize": 10,
+    "sampleRunFiles": ["run-202609201.jsonl", "run-202609203.jsonl", "run-202609204.jsonl"]
+  },
+  {
+    "signature": "Error: page.goto: net::ERR_CONNECTION_RESET at \"…\"",
+    "category": "other",
+    "testTitlePaths": [" > ui > ui/links.spec.ts > DemoQA UI @ Links > Clicking \"Moved\" reports a 301 Moved Permanently response"],
+    "occurrences": 4,
+    "windowSize": 10,
+    "sampleRunFiles": ["run-202609202.jsonl", "run-202609205.jsonl", "run-202609207.jsonl"]
+  }
+]

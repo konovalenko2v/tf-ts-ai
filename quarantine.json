@@ -1,0 +1,9 @@
+[
+  {
+    "signature": "Error: expect(locator).toBeVisible() failed",
+    "testTitlePaths": [" > ui > ui/web-tables.spec.ts > DemoQA UI @ Web Tables > Adds a new record and it appears in the table"],
+    "addedAt": "2026-09-25T00:00:00+00:00",
+    "expiresAt": "2026-10-09T00:00:00+00:00",
+    "reason": "Flaky in 6/10 of the last runs (DemoQA table re-render race after adding a row \u2014 see quarantine-candidates.json). Assertion itself is correct; underlying page timing needs a fix, tracked separately."
+  }
+]
