@@ -191,8 +191,8 @@ test.describe('renderDashboard', () => {
 
     expect(html).toContain('Unit test coverage');
     expect(html).toContain('Mutation score');
-    const naCount = (html.match(/<div class="num">n\/a<\/div>/g) ?? []).length;
-    expect(naCount).toBe(2);
+    expect(html).toContain('<div class="num">n/a</div>');
+    expect(html).toContain('<div class="num flat">n/a</div>');
   });
 
   test('renders a bare percentage (no arrow) when the mutation score has not moved from baseline', () => {
@@ -201,15 +201,23 @@ test.describe('renderDashboard', () => {
     const html = renderDashboard(data);
 
     expect(html).toContain('<div class="num">70.84%</div>');
-    expect(html).toContain('<div class="num">91.72%</div>');
+    expect(html).toContain('<div class="num flat">91.72%</div>');
     expect(html).not.toContain('→');
   });
 
-  test('renders a baseline -> current arrow when the mutation score changed (fixed a survived mutant)', () => {
+  test('renders a green "up" class when the mutation score rose (survived mutant fixed)', () => {
     const data = buildDashboardData([], [], new Date(), 70.84, 91.72, 96.55);
 
     const html = renderDashboard(data);
 
-    expect(html).toContain('<div class="num">91.72% → 96.55%</div>');
+    expect(html).toContain('<div class="num up">91.72% → 96.55%</div>');
+  });
+
+  test('renders a red "down" class when the mutation score dropped', () => {
+    const data = buildDashboardData([], [], new Date(), 70.84, 91.72, 87.59);
+
+    const html = renderDashboard(data);
+
+    expect(html).toContain('<div class="num down">91.72% → 87.59%</div>');
   });
 });
