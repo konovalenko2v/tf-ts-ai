@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
+import playwright from 'eslint-plugin-playwright';
 import prettier from 'eslint-config-prettier';
 
 // Flat config (ESLint 10). Type-aware linting is on via projectService — the rules that actually
@@ -91,6 +92,26 @@ export default tseslint.config(
     files: ['src/**/*.ts'],
     rules: {
       'no-console': 'off',
+    },
+  },
+  {
+    // A test() body with no assertion at all is a silent false-pass just like an un-awaited
+    // promise above — it can only ever go green. Scoped to just this one rule (not the plugin's
+    // full recommended set) to avoid taking on unrelated style rules in the same PR.
+    //
+    // The real expect() calls in this suite almost never sit in the spec body itself — they're
+    // one level down, inside a Steps-class method (src/ui/steps/*.ts etc), by a `verify*` naming
+    // convention that's consistent across every steps file (verifyMovedResponse,
+    // verifyRowCount, ...). `^verify` covers all of those in one pattern instead of an
+    // ever-growing assertFunctionNames list that a new verify* method would silently fall outside
+    // of. succeedsWhen is the one exception to that convention: the goal-evolution oracle
+    // (src/goal-evolution/goal.ts) — the actual expect()-equivalent for buttons-goal.spec.ts /
+    // book-store-goal.spec.ts / book-store-remove-books-goal.spec.ts lives inside it, not in the
+    // spec body, by design (see CLAUDE.md rule #3's agent/oracle split).
+    files: ['tests/**/*.spec.ts'],
+    plugins: { playwright },
+    rules: {
+      'playwright/expect-expect': ['error', { assertFunctionNames: ['succeedsWhen'], assertFunctionPatterns: ['^verify'] }],
     },
   },
   {
