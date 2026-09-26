@@ -29,7 +29,13 @@ export interface DashboardData {
   quarantinedCount: number;
   quarantinedExpiredCount: number;
   proposedForQuarantineCount: number;
-  proposedForQuarantine: { signature: string; category: FailureGroup['category']; testTitlePaths: string[] }[];
+  proposedForQuarantine: {
+    signature: string;
+    category: FailureGroup['category'];
+    testTitlePaths: string[];
+    occurrences: number;
+    windowSize: number;
+  }[];
   // One row per Playwright project (api/graphql/ui/unit/contract) — "quarantined" here counts
   // this project's tests that are ALSO in quarantine.json, an overlay on top of passed/failed/
   // flaky rather than a separate bucket: a quarantined test still genuinely passed or failed in
@@ -96,6 +102,8 @@ export function buildDashboardData(
       signature: p.signature,
       category: p.category as FailureGroup['category'],
       testTitlePaths: p.testTitlePaths,
+      occurrences: p.occurrences,
+      windowSize: p.windowSize,
     })),
     coveragePct,
     mutationScoreBaselinePct,
@@ -131,6 +139,64 @@ function projectBreakdown(latest: TestSummaryEvent[], quarantine: QuarantineEntr
   });
 }
 
+const ALLURE_SUITES_JSON = path.join('allure-report', 'data', 'suites.json');
+
+interface AllureSuiteNode {
+  name: string;
+  uid?: string;
+  children?: AllureSuiteNode[];
+}
+
+// Same #suites/<suiteUid>/<testUid>/ route link-healed-tests.ts already builds — see that file's
+// header comment for why the uid tree can only be read from Allure's own generated output rather
+// than re-hashed here, and why the link is only valid for the deployment it was built against.
+//
+// testTitlePath (Playwright's test.titlePath().join(' > '), e.g. " > ui > ui/links.spec.ts >
+// DemoQA UI @ Links > Clicking...") walks the exact same levels the suites.json tree does, one
+// name per level — matched on the FULL chain, not just the leaf title, since the same leaf title
+// can legitimately appear under two different spec files.
+export function findAllureUids(root: AllureSuiteNode, testTitlePath: string): { suiteUid: string; testUid: string } | null {
+  const segments = testTitlePath
+    .split('>')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (segments.length === 0) return null;
+
+  let node = root;
+  let parentUid: string | undefined;
+  for (const segment of segments) {
+    const next = node.children?.find((c) => c.name === segment);
+    if (!next?.uid) return null;
+    parentUid = node === root ? parentUid : node.uid;
+    node = next;
+  }
+  if (!parentUid || !node.uid) return null;
+  return { suiteUid: parentUid, testUid: node.uid };
+}
+
+// Read once per dashboard render (renderDashboard's call sites below), not once per test row —
+// callers pass the same `root` to every renderTestTitleLink call in one render pass rather than
+// each row re-reading and re-parsing the file.
+function readAllureSuites(): AllureSuiteNode | null {
+  if (!fs.existsSync(ALLURE_SUITES_JSON)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(ALLURE_SUITES_JSON, 'utf-8')) as AllureSuiteNode;
+  } catch {
+    return null;
+  }
+}
+
+// Relative to dashboard/index.html (allure-report/dashboard/index.html, alongside the existing
+// "↩ Allure report" link) — no env var needed, and it keeps working under any base path Pages
+// serves the report from. Returns '' (no link) when suites.json isn't there (root is null), e.g. a
+// local `npm run dashboard` run with no `allure generate` first.
+function allureTestLink(root: AllureSuiteNode | null, testTitlePath: string): string {
+  if (!root) return '';
+  const uids = findAllureUids(root, testTitlePath);
+  if (!uids) return '';
+  return `../#suites/${uids.suiteUid}/${uids.testUid}/`;
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
@@ -151,9 +217,21 @@ function mutationScoreDirection(baselinePct: number | null, currentPct: number |
   return currentPct > baselinePct ? 'up' : 'down';
 }
 
-function renderGroup(g: FailureGroup): string {
+// Drops the leading " > <project> > " — the project is already shown by the enclosing card/badge,
+// and the raw testTitlePath's leading empty segment (test.titlePath()'s root) plus project name
+// otherwise repeats on every single row for no reason. Links to the same-deployment Allure result
+// when suites.json resolved a uid for it; renders as plain text (no dead link) otherwise.
+function renderTestTitleLink(root: AllureSuiteNode | null, testTitlePath: string): string {
+  const trimmed = testTitlePath.trim();
+  const withoutProjectPrefix = trimmed.replace(/^>\s*[^>]+>\s*/, '');
+  const label = escapeHtml(withoutProjectPrefix || trimmed);
+  const href = allureTestLink(root, testTitlePath);
+  return href ? `<a href="${escapeHtml(href)}">${label}</a>` : label;
+}
+
+function renderGroup(root: AllureSuiteNode | null, g: FailureGroup): string {
   const flakyBadge = g.allFlaky ? '<span class="badge badge-flaky">flaky — passed on retry</span>' : '';
-  const tests = g.testTitlePaths.map((p) => `<li>${escapeHtml(p.trim())}</li>`).join('');
+  const tests = g.testTitlePaths.map((p) => `<li>${renderTestTitleLink(root, p)}</li>`).join('');
   return `
     <article class="group">
       <header>
@@ -197,28 +275,34 @@ function renderProjectBreakdown(byProject: ProjectBreakdown[]): string {
   <div class="project-grid">${cards}</div>`;
 }
 
-function renderProposed(data: DashboardData): string {
+function renderProposed(root: AllureSuiteNode | null, data: DashboardData): string {
   if (data.proposedForQuarantine.length === 0) return '';
   const rows = data.proposedForQuarantine
-    .map(
-      (p) => `
+    .map((p) => {
+      const tests = p.testTitlePaths.map((t) => `<li>${renderTestTitleLink(root, t)}</li>`).join('');
+      return `
       <li>
-        <span class="badge badge-${p.category}">${escapeHtml(CATEGORY_LABELS[p.category])}</span>
-        <span class="signature">${escapeHtml(p.signature)}</span>
-        <span class="muted">${p.testTitlePaths.length} test${p.testTitlePaths.length === 1 ? '' : 's'}</span>
-      </li>`,
-    )
+        <div class="proposed-header">
+          <span class="badge badge-${p.category}">${escapeHtml(CATEGORY_LABELS[p.category])}</span>
+          <span class="muted">flaky in ${p.occurrences}/${p.windowSize} recent runs</span>
+        </div>
+        <p class="signature">${escapeHtml(p.signature)}</p>
+        <ul class="test-list">${tests}</ul>
+      </li>`;
+    })
     .join('');
   return `
     <section>
-      <h2>Proposed for quarantine (this run)</h2>
-      <p class="muted">Failed at least once, then passed on retry — a human still has to promote these into quarantine.json.</p>
+      <h2>Proposed for quarantine</h2>
+      <p class="muted">Flaky often enough across recent runs (see quarantine-candidates.json) — a human still has to promote these into quarantine.json.</p>
       <ul class="proposed-list">${rows}</ul>
     </section>`;
 }
 
 export function renderDashboard(data: DashboardData): string {
-  const groupsHtml = data.groups.length > 0 ? `<h2>Failures by cause</h2>\n  ${data.groups.map(renderGroup).join('')}` : '';
+  const allureRoot = readAllureSuites();
+  const groupsHtml =
+    data.groups.length > 0 ? `<h2>Failures by cause</h2>\n  ${data.groups.map((g) => renderGroup(allureRoot, g)).join('')}` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -281,6 +365,7 @@ export function renderDashboard(data: DashboardData): string {
   .badge-ai-healing { background: #fee2e2; color: #991b1b; }
   .badge-contract { background: #ede9fe; color: #5b21b6; }
   .badge-assertion { background: #fecaca; color: #7f1d1d; }
+  .badge-network { background: #cffafe; color: #155e75; }
   .badge-other { background: #e5e7eb; color: #374151; }
   .badge-flaky { background: #fef9c3; color: #854d0e; }
   @media (prefers-color-scheme: dark) {
@@ -289,6 +374,7 @@ export function renderDashboard(data: DashboardData): string {
     .badge-ai-healing { background: #450a0a; color: #fca5a5; }
     .badge-contract { background: #2e1065; color: #c4b5fd; }
     .badge-assertion { background: #450a0a; color: #fca5a5; }
+    .badge-network { background: #164e63; color: #67e8f9; }
     .badge-other { background: #2a2e37; color: #d1d5db; }
     .badge-flaky { background: #422006; color: #fde047; }
   }
@@ -296,6 +382,8 @@ export function renderDashboard(data: DashboardData): string {
   .signature { font-family: ui-monospace, monospace; font-size: 0.8125rem; color: var(--muted); margin: 0.25rem 0 0.75rem; word-break: break-word; }
   .test-list { margin: 0 0 0.5rem; padding-left: 1.25rem; font-size: 0.875rem; }
   .test-list li { margin-bottom: 0.2rem; }
+  .test-list a { color: inherit; text-decoration-color: var(--muted); }
+  .test-list a:hover { text-decoration-color: currentColor; }
   details { font-size: 0.8125rem; }
   summary { cursor: pointer; color: var(--blue); }
   pre {
@@ -317,11 +405,11 @@ export function renderDashboard(data: DashboardData): string {
   .stat-flaky dd { color: var(--amber); }
   .stat-quarantined dd { color: var(--purple); }
   .proposed-list { list-style: none; margin: 0; padding: 0; }
-  .proposed-list li {
-    display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  .proposed-list > li {
     background: var(--card); border: 1px solid var(--border); border-radius: 10px;
     padding: 0.6rem 0.9rem; margin-bottom: 0.5rem; font-size: 0.8125rem;
   }
+  .proposed-header { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
   footer { margin-top: 3rem; color: var(--muted); font-size: 0.75rem; text-align: center; }
 </style>
 </head>
@@ -343,7 +431,7 @@ export function renderDashboard(data: DashboardData): string {
 
   ${groupsHtml}
 
-  ${renderProposed(data)}
+  ${renderProposed(allureRoot, data)}
 
   <footer>
     ${data.totalTests} test(s) total · ${data.flaky} flaky · ${data.skipped} skipped
@@ -431,6 +519,10 @@ function main(): void {
   );
   const html = renderDashboard(data);
 
+  // The relative Allure link ("../#suites/...") assumes the dashboard is written one directory
+  // below the Allure report root — true for the default (and for regression.yml's own
+  // `npm run dashboard -- allure-report/dashboard`, run right after `allure generate`), but a
+  // custom outDir elsewhere breaks that assumption; links then silently resolve to nothing.
   const outDir = process.argv[2] ?? path.join('allure-report', 'dashboard');
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'index.html'), html);

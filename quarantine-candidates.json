@@ -9,7 +9,7 @@
   },
   {
     "signature": "Error: page.goto: net::ERR_CONNECTION_RESET at \"…\"",
-    "category": "other",
+    "category": "network",
     "testTitlePaths": [" > ui > ui/links.spec.ts > DemoQA UI @ Links > Clicking \"Moved\" reports a 301 Moved Permanently response"],
     "occurrences": 4,
     "windowSize": 10,

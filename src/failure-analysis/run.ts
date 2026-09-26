@@ -16,6 +16,7 @@ export const CATEGORY_LABELS: Record<FailureCategory, string> = {
   'ai-healing': 'AI healing tried and failed to recover a broken locator',
   contract: 'API contract violation (response shape no longer matches its Zod schema)',
   assertion: 'Assertion failure (likely a real bug)',
+  network: 'Network/transport error (connection reset, DNS, timeout reaching the page)',
   other: 'Uncategorized',
 };
 
@@ -33,6 +34,8 @@ const RETRY_VERDICTS: Record<FailureCategory, string> = {
   contract:
     'Retrying cannot fix this — the response has the same shape on every attempt. Either the API changed (update the schema in src/api/schemas/ if the change is intended) or it regressed.',
   assertion: 'Retrying is the right way to tell flake from a real bug — if it fails on every attempt, treat it as a real bug.',
+  network:
+    'Retrying is usually correct — a connection reset or DNS blip is transient. Persisting across every retry points at a real outage or a blocked/rate-limited host, not the test.',
   other: 'No established policy yet — falls back to the project default retry count.',
 };
 

@@ -81,6 +81,18 @@ test.describe('groupFailures — categorization', () => {
     const groups = groupFailures([makeTest({ error: { message: 'Error: something completely unexpected happened' } })]);
     expect(groups[0].category).toBe('other');
   });
+
+  test('categorizes a connection reset as "network", not "other"', () => {
+    const groups = groupFailures([
+      makeTest({ error: { message: 'Error: page.goto: net::ERR_CONNECTION_RESET at "https://demoqa.com/links"' } }),
+    ]);
+    expect(groups[0].category).toBe('network');
+  });
+
+  test('categorizes a page.goto timeout as "network"', () => {
+    const groups = groupFailures([makeTest({ error: { message: 'Error: page.goto: Timeout 30000ms exceeded.' } })]);
+    expect(groups[0].category).toBe('network');
+  });
 });
 
 test.describe('groupFailures — signature normalization and grouping', () => {
