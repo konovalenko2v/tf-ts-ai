@@ -218,7 +218,7 @@ function renderProposed(data: DashboardData): string {
 }
 
 export function renderDashboard(data: DashboardData): string {
-  const groupsHtml = data.groups.length > 0 ? data.groups.map(renderGroup).join('') : '<p class="muted">No failing tests in this run.</p>';
+  const groupsHtml = data.groups.length > 0 ? `<h2>Failures by cause</h2>\n  ${data.groups.map(renderGroup).join('')}` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -341,7 +341,6 @@ export function renderDashboard(data: DashboardData): string {
 
   ${renderProjectBreakdown(data.byProject)}
 
-  <h2>Failures by cause</h2>
   ${groupsHtml}
 
   ${renderProposed(data)}
