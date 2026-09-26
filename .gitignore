@@ -13,6 +13,11 @@ allure-report/
 coverage/
 docker/reportportal/docker-compose.override.yml
 
-# Stryker mutation testing — sandbox copies and the HTML report
+# Stryker mutation testing — sandbox copies and the HTML report. mutation-summary.json (the
+# dashboard's coverage-of-test-quality input, src/failure-analysis/mutation-summary.ts) is
+# committed on purpose — mutation.yml is path-filtered and runs separately from regression.yml
+# (which builds the dashboard) and master's branch protection blocks a direct push from CI anyway,
+# so a human/PR commits the refreshed snapshot instead of an automated write-back.
 .stryker-tmp/
-reports/
+reports/*
+!reports/mutation-summary.json

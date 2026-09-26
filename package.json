@@ -25,6 +25,7 @@
     "agent-fixer": "tsx src/agent-fixer/run.ts",
     "failure-analysis": "tsx src/failure-analysis/run.ts",
     "dashboard": "tsx src/failure-analysis/dashboard.ts",
+    "mutation-summary": "tsx src/failure-analysis/mutation-summary.ts",
     "check-quarantine-ttl": "tsx src/failure-analysis/check-quarantine-ttl.ts",
     "link-healed-tests": "tsx src/failure-analysis/link-healed-tests.ts",
     "test-evolution": "tsx src/test-evolution/run.ts",

@@ -55,7 +55,10 @@ export function parseReviewVerdict(text: string): ReviewVerdict {
     throw new Error(`Could not parse a VERDICT line from the model response: ${text}`);
   }
 
-  const findingLines = [...text.matchAll(/^-\s*\[(ok|minor|major)\]\s*([^:]+):\s*(.+)$/gim)];
+  // No trailing $: with the /m flag, `.+` (no /s flag, so it never crosses a newline) already
+  // stops at end-of-line on its own — $ here is an equivalent mutant Stryker correctly flags as
+  // survivable, not a real behavior difference; removed rather than "fixed" with an unfalsifiable test.
+  const findingLines = [...text.matchAll(/^-\s*\[(ok|minor|major)\]\s*([^:]+):\s*(.+)/gim)];
   const findings: ReviewFinding[] = findingLines.map((m) => ({
     severity: m[1].toLowerCase() as Severity,
     check: m[2].trim(),

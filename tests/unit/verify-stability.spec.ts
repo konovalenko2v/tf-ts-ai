@@ -52,6 +52,12 @@ test.describe('evaluateStability — scope gate', () => {
     expect(verdict.reason).toContain('.github/workflows/regression.yml');
   });
 
+  test('joins multiple out-of-scope files with ", " in the reason', () => {
+    const runner = () => true;
+    const verdict = evaluateStability(affected({ changedFiles: ['a.yml', 'b.ts'] }), runner);
+    expect(verdict.reason).toContain('a.yml, b.ts');
+  });
+
   test('the scope gate runs BEFORE any Playwright invocation — an out-of-scope branch never gets its tests run', () => {
     let called = false;
     const runner = () => {

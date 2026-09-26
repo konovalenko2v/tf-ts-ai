@@ -90,6 +90,22 @@ test.describe('buildDashboardData', () => {
     expect(data.groups).toHaveLength(0);
     expect(data.proposedForQuarantineCount).toBe(0);
   });
+
+  test('coveragePct/mutationScoreBaselinePct/mutationScoreCurrentPct default to null when not passed', () => {
+    const data = buildDashboardData([], []);
+
+    expect(data.coveragePct).toBeNull();
+    expect(data.mutationScoreBaselinePct).toBeNull();
+    expect(data.mutationScoreCurrentPct).toBeNull();
+  });
+
+  test('carries through explicit coveragePct/mutationScore values', () => {
+    const data = buildDashboardData([], [], new Date(), 70.84, 85.0, 91.72);
+
+    expect(data.coveragePct).toBe(70.84);
+    expect(data.mutationScoreBaselinePct).toBe(85.0);
+    expect(data.mutationScoreCurrentPct).toBe(91.72);
+  });
 });
 
 test.describe('namespaceTestIds', () => {
@@ -168,5 +184,32 @@ test.describe('renderDashboard', () => {
     expect(html).toContain('<div class="num">1</div>');
     expect(html).toContain('href="../"');
     expect(html).toContain('Allure report');
+  });
+
+  test('renders "n/a" for coverage/mutation score when neither was supplied', () => {
+    const html = renderDashboard(baseData());
+
+    expect(html).toContain('Unit test coverage');
+    expect(html).toContain('Mutation score');
+    const naCount = (html.match(/<div class="num">n\/a<\/div>/g) ?? []).length;
+    expect(naCount).toBe(2);
+  });
+
+  test('renders a bare percentage (no arrow) when the mutation score has not moved from baseline', () => {
+    const data = buildDashboardData([], [], new Date(), 70.84, 91.72, 91.72);
+
+    const html = renderDashboard(data);
+
+    expect(html).toContain('<div class="num">70.84%</div>');
+    expect(html).toContain('<div class="num">91.72%</div>');
+    expect(html).not.toContain('→');
+  });
+
+  test('renders a baseline -> current arrow when the mutation score changed (fixed a survived mutant)', () => {
+    const data = buildDashboardData([], [], new Date(), 70.84, 91.72, 96.55);
+
+    const html = renderDashboard(data);
+
+    expect(html).toContain('<div class="num">91.72% → 96.55%</div>');
   });
 });

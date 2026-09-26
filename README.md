@@ -446,23 +446,61 @@ gets auto-merged, so it stays uncalled until that gate is designed deliberately 
 GitHub Pages alongside the Allure report (`/dashboard/`, linked back to Allure with `↩`), not
 merged into it. One glance: passed/failed/flaky/skipped counts, failures grouped by cause (the
 same six categories and labels as the report above, reused via `CATEGORY_LABELS` — not a second
-copy), and quarantine state — currently-quarantined count plus tests proposed for quarantine
+copy), quarantine state — currently-quarantined count plus tests proposed for quarantine
 _this run_ (honestly labelled: `quarantine-history.jsonl` doesn't persist across CI runs today,
-so this isn't yet "flaky in N of the last 10"). Self-contained (inline CSS, dark mode via
-`prefers-color-scheme`, no CDN, no JS) and read-only — it never calls `updateCandidatesFromRun`
-or writes any quarantine file.
+so this isn't yet "flaky in N of the last 10") — plus two test-quality signals, both optional
+(render "n/a" when their input file is absent, e.g. a local `npm run dashboard` with neither
+generated):
 
-`regression.yml`'s `test` job merges every shard's `.observability/run-*.jsonl` before rendering.
-Playwright's `testId` is a stable hash of `(file, title)` — deliberately identical across shards
-for the same test — so a naive merge collides two shards' events under one key and silently drops
-half the tests; `namespaceTestIds()` prefixes each event's `testId` with its `runId` before
-anything downstream (`classify.ts`'s dedupe) sees it, fixing the merge without changing that
-module's contract for its other caller (`failure-analysis/run.ts`, always a single run file).
+- **Unit test coverage** — c8's `coverage/coverage-summary.json` (`json-summary` reporter,
+  alongside the existing text/lcov ones), line coverage over the `unit`+`contract` projects.
+- **Mutation score (gate modules)** — Stryker's score for the 3 CI merge-gate files
+  (`stryker.config.json`'s `mutate` list), read from the committed `reports/mutation-summary.json`
+  (`src/failure-analysis/mutation-summary.ts`, `npm run mutation-summary`). Shown as
+  `baseline% → current%` once the two differ (e.g. after fixing a survived mutant — a test that
+  keeps passing even when the code it's meant to check was changed), or a bare `current%` when
+  they match. `baseline` is written once, on the first run with no existing snapshot, and carried
+  forward afterward — `current` is what every later run refreshes. Committed on purpose, not
+  gitignored: `mutation.yml` is its own path-filtered workflow (only runs when one of those 3
+  files or their tests change) with no direct route to `regression.yml`'s dashboard-building job,
+  and `master`'s branch protection blocks a push straight from CI anyway — so a human (or a PR
+  from the branch that changed the gate modules) commits the refreshed snapshot, the same
+  propose/promote split `quarantine.json` already uses.
+
+Self-contained (inline CSS, dark mode via `prefers-color-scheme`, no CDN, no JS) and read-only for
+everything test-result-shaped — it never calls `updateCandidatesFromRun` or writes any quarantine
+file.
+
+Unit + contract tests run exactly once, in their own `unit` job — not as a step inside `test-shard`
+or, previously, re-run a second time by an "informational coverage" step in the aggregate `test`
+job (which used to happen, double-counting every unit test in the dashboard's totals; moving
+coverage into the dedicated `unit` job and having `test` just download its `coverage-summary`
+artifact removed the second run instead of trying to de-duplicate it after the fact). `test-shard`
+(api/graphql/ui only now) and the aggregate `test` job both `needs: unit`, so a red unit/contract
+test fails the required check the same way a red shard does, rather than only showing up in an
+informational step nothing actually gated on.
+
+`regression.yml`'s `test` job merges every shard's (plus `unit`'s own) `.observability/run-*.jsonl`
+before rendering. Playwright's `testId` is a stable hash of `(file, title)` — deliberately
+identical across shards for the same test — so a naive merge collides two shards' events under one
+key and silently drops half the tests; `namespaceTestIds()` prefixes each event's `testId` with its
+`runId` before anything downstream (`classify.ts`'s dedupe) sees it, fixing the merge without
+changing that module's contract for its other caller (`failure-analysis/run.ts`, always a single
+run file).
 
 The `deploy` job publishes to Pages only on `push`/`workflow_dispatch` against `master` — a PR run
-skips it (no live Pages URL to show for a branch that hasn't merged yet). The report (Allure + this
+skips it (no live Pages URL to show for a branch that hasn't merged yet, and the `github-pages`
+environment's deployment-branch-policy only allows `master` anyway). The report (Allure + this
 dashboard) is still built and uploaded as a downloadable artifact on every run, red or green; the
 `test` job posts (and updates, not duplicates) a PR comment linking to it.
+
+A PR's `Run tests` step now forwards `--shard=N/M` (plus a `--project` filter) into
+`npm run test:affected` itself (`src/test-selection/run.ts` passes through any extra CLI args,
+with `--pass-with-no-tests` so a shard with nothing matching still passes rather than failing on
+zero tests) — previously `test:affected`'s fixed argv couldn't take `--shard` at all, so both
+shards silently re-ran the WHOLE affected set instead of splitting it, doubling every PR's real
+test count (and CI time) for no benefit; this is what an exact ×2 on every failure group in the
+dashboard used to mean on a PR run.
 
 ### Flaky-test quarantine (detection + TTL only — no merge-gate exemption yet)
 

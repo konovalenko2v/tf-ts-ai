@@ -75,9 +75,13 @@ npm run ai-usage-report [-- --json]   # per-caller/per-model AI cost/token summa
 2. **Never write a new abstraction from scratch.** Reuse existing `clients`/`steps`/`pages` —
    e.g. reach for `src/api/auth/token.provider.ts`, don't fetch a token yourself. A new UI page
    object extends `src/ui/pages/base.page.ts` (`open()`/`blockAds()` only — it does not touch how
-   pages hold or call locators, and `heal.click(this.page.locator(...))` call sites must stay
-   matched literally for `src/agent-fixer/run.ts` to find and patch them). See
-   `ai-agents/personas/test-developer.md` ("Hard rule").
+   pages hold or call locators). `heal.click(this.page.locator('<sel>'), '<context>')` call sites
+   are read by `src/agent-fixer/locate-in-source.ts` (not a same-line regex — it scans forward
+   across Prettier's line-wrapping for the context string), so `this.page.locator('<sel>')` must
+   stay a literal call, not a variable holding a prebuilt Locator. A getter that returns one
+   (`get x() { return this.page.locator('<sel>'); }`, called as `heal.click(this.x, '<context>')`)
+   is fine — the matcher resolves the context from wherever the getter is actually invoked, not
+   from the getter body. See `ai-agents/personas/test-developer.md` ("Hard rule").
 3. **goal-evolution has a strict agent/oracle split.** The agent (`goal-solver`) writes only a
    client/Page Object + `achieve(...)` — never a spec file, never `expect(...)`. The success
    condition (`Goal.succeedsWhen`) is human-written ahead of time in `src/goal-evolution/goals/*.ts`
