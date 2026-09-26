@@ -184,10 +184,10 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # This job runs the suite in N parallel slices (currently shard: [1, 2], shard-count: [2] below
-  # — raise both together to add more). `test` (further down) is the aggregate that merges their
-  # reports and is what branch protection actually requires — see that job's own comment for why
-  # the names are split this way.
+  # This job runs the suite in N parallel slices (currently shard: [1, 2, 3, 4], shard-count: [4]
+  # below — raise both together to add more). `test` (further down) is the aggregate that merges
+  # their reports and is what branch protection actually requires — see that job's own comment for
+  # why the names are split this way.
   test-shard:
     needs: [rp-launch-start, unit]
     # `needs` alone would skip this whole job when rp-launch-start is itself skipped (the normal
@@ -205,8 +205,8 @@ jobs:
       # shard: [1, 2, 3, 4], shard-count: [4]. This is a cartesian product (matrix), not a paired
       # zip — editing only `shard` runs the full suite N times over instead of splitting it.
       matrix:
-        shard: [1, 2]
-        shard-count: [2]
+        shard: [1, 2, 3, 4]
+        shard-count: [4]
     steps:
       # fetch-depth: 0 — test:affected diffs the PR branch against origin/<base>, which needs
       # the base branch's history present locally; the default shallow (depth-1) checkout only
