@@ -15,13 +15,14 @@ const CLEAN = `VERDICT: YES
 - [ok] Secrets/config: no credentials in the diff
 - [ok] Reuse: uses the existing client
 - [ok] Agent/oracle split: diff does not touch goal-evolution
-- [ok] CI/merge-gate safety: no workflow change`;
+- [ok] CI/merge-gate safety: no workflow change
+- [ok] Assertion quality: no vacuous or tautological checks`;
 
 test.describe('parseReviewVerdict', () => {
   test('parses a clean all-ok verdict', () => {
     const v = parseReviewVerdict(CLEAN);
     expect(v.verdict).toBe(true);
-    expect(v.findings).toHaveLength(6);
+    expect(v.findings).toHaveLength(7);
     expect(v.findings[2]).toEqual({ severity: 'ok', check: 'Secrets/config', note: 'no credentials in the diff' });
   });
 
@@ -79,7 +80,7 @@ test.describe('parseReviewVerdict — formatting tolerance', () => {
   test('a bullet-shaped fragment mid-line (e.g. quoting the PR body) is not a finding', () => {
     // If this counted, a PR description containing "- [major] ..." text could flip the verdict.
     const v = parseReviewVerdict(`${CLEAN}\nThe description claims: - [major] Scope: everything`);
-    expect(v.findings).toHaveLength(6);
+    expect(v.findings).toHaveLength(7);
     expect(v.verdict).toBe(true);
   });
 });
