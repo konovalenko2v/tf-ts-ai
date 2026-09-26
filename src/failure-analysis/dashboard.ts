@@ -96,6 +96,13 @@ function renderMutationScore(baselinePct: number | null, currentPct: number | nu
   return `${baselinePct}% → ${currentPct}%`;
 }
 
+// 'up' colors the card green (mutation score rose — code quality improved), 'down' colors it red
+// (a survived mutant appeared or worsened), 'flat' keeps the neutral blue used everywhere else.
+function mutationScoreDirection(baselinePct: number | null, currentPct: number | null): 'up' | 'down' | 'flat' {
+  if (baselinePct === null || currentPct === null || baselinePct === currentPct) return 'flat';
+  return currentPct > baselinePct ? 'up' : 'down';
+}
+
 function renderGroup(g: FailureGroup): string {
   const flakyBadge = g.allFlaky ? '<span class="badge badge-flaky">flaky — passed on retry</span>' : '';
   const tests = g.testTitlePaths.map((p) => `<li>${escapeHtml(p.trim())}</li>`).join('');
@@ -174,7 +181,9 @@ export function renderDashboard(data: DashboardData): string {
   .card.proposed .num { color: var(--amber); }
   .card.quarantined .num { color: var(--purple); }
   .card.coverage .num { color: var(--blue); }
-  .card.mutation .num { color: var(--blue); }
+  .card.mutation .num { color: var(--blue); white-space: nowrap; }
+  .card.mutation .num.up { color: var(--green); }
+  .card.mutation .num.down { color: var(--red); }
   h2 { font-size: 1.125rem; font-weight: 600; margin: 2rem 0 0.75rem; }
   .muted { color: var(--muted); font-size: 0.875rem; }
   .group {
@@ -232,7 +241,7 @@ export function renderDashboard(data: DashboardData): string {
     <div class="card proposed"><div class="num">${data.proposedForQuarantineCount}</div><div class="label">Proposed for quarantine</div></div>
     <div class="card quarantined"><div class="num">${data.quarantinedCount}</div><div class="label">Currently quarantined</div></div>
     <div class="card coverage"><div class="num">${data.coveragePct !== null ? data.coveragePct + '%' : 'n/a'}</div><div class="label">Unit test coverage</div></div>
-    <div class="card mutation"><div class="num">${renderMutationScore(data.mutationScoreBaselinePct, data.mutationScoreCurrentPct)}</div><div class="label">Mutation score (gate modules)</div></div>
+    <div class="card mutation"><div class="num ${mutationScoreDirection(data.mutationScoreBaselinePct, data.mutationScoreCurrentPct)}">${renderMutationScore(data.mutationScoreBaselinePct, data.mutationScoreCurrentPct)}</div><div class="label">Mutation score (gate modules)</div></div>
   </div>
 
   <h2>Failures by cause</h2>
