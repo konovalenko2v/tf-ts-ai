@@ -1,8 +1,12 @@
 // Unit coverage for src/failure-analysis/dashboard.ts — buildDashboardData (pure aggregation) and
-// renderDashboard (pure HTML string). No file I/O: main()'s readAllRunEvents/writeFileSync are
-// intentionally left uncovered here, same split as verify-stability.spec.ts uses for its thin main().
+// renderDashboard (pure HTML string). No file I/O in the tests themselves: main()'s
+// readAllRunEvents/writeFileSync are intentionally left uncovered, same split as
+// verify-stability.spec.ts uses for its thin main(). renderDashboard's own readAllureSuites() read
+// is exercised as-is — this test file's CWD has no allure-report/data/suites.json, so it exercises
+// exactly the "no Allure report generated yet" path; findAllureUids (the pure matcher) is tested
+// directly below with an in-memory tree instead.
 import { test, expect } from '@playwright/test';
-import { buildDashboardData, renderDashboard, namespaceTestIds } from '../../src/failure-analysis/dashboard';
+import { buildDashboardData, renderDashboard, namespaceTestIds, findAllureUids } from '../../src/failure-analysis/dashboard';
 import { ObservabilityEvent, TestSummaryEvent } from '../../src/observability/types';
 import { QuarantineCandidate, QuarantineEntry } from '../../src/failure-analysis/quarantine';
 
@@ -78,6 +82,8 @@ test.describe('buildDashboardData', () => {
     expect(data.proposedForQuarantineCount).toBe(1);
     expect(data.proposedForQuarantine[0].category).toBe('ai-healing');
     expect(data.proposedForQuarantine[0].testTitlePaths).toEqual(['> ui > suite > flaky test']);
+    expect(data.proposedForQuarantine[0].occurrences).toBe(4);
+    expect(data.proposedForQuarantine[0].windowSize).toBe(10);
   });
 
   test('a candidate already promoted into quarantine.json is excluded from proposed-for-quarantine', () => {
@@ -341,5 +347,122 @@ test.describe('renderDashboard', () => {
     const html = renderDashboard(data);
 
     expect(html).toContain('<div class="num down">91.72% → 87.59%</div>');
+  });
+
+  test('"Proposed for quarantine" no longer says "(this run)" — the card reads from cross-run history, not this run\'s events', () => {
+    const candidates: QuarantineCandidate[] = [
+      {
+        signature: 'HealError: …',
+        category: 'ai-healing',
+        testTitlePaths: ['> ui > suite > flaky test'],
+        occurrences: 4,
+        windowSize: 10,
+        sampleRunFiles: ['run-1.jsonl'],
+      },
+    ];
+    const data = buildDashboardData([], [], new Date(), null, null, null, candidates);
+
+    const html = renderDashboard(data);
+
+    expect(html).toContain('Proposed for quarantine');
+    expect(html).not.toContain('Proposed for quarantine (this run)');
+  });
+
+  test('a proposed candidate shows the test name and how often it was flaky, not just a count', () => {
+    const candidates: QuarantineCandidate[] = [
+      {
+        signature: 'HealError: …',
+        category: 'ai-healing',
+        testTitlePaths: ['> ui > suite > flaky test'],
+        occurrences: 4,
+        windowSize: 10,
+        sampleRunFiles: ['run-1.jsonl'],
+      },
+    ];
+    const data = buildDashboardData([], [], new Date(), null, null, null, candidates);
+
+    const html = renderDashboard(data);
+
+    expect(html).toContain('flaky test');
+    expect(html).toContain('flaky in 4/10 recent runs');
+  });
+
+  test('a proposed candidate with no matching Allure report renders the test name as plain text, not a dead link', () => {
+    const candidates: QuarantineCandidate[] = [
+      {
+        signature: 'HealError: …',
+        category: 'ai-healing',
+        testTitlePaths: ['> ui > suite > flaky test'],
+        occurrences: 4,
+        windowSize: 10,
+        sampleRunFiles: [],
+      },
+    ];
+    const data = buildDashboardData([], [], new Date(), null, null, null, candidates);
+
+    const html = renderDashboard(data);
+
+    expect(html).toContain('<li>suite &gt; flaky test</li>');
+  });
+});
+
+test.describe('findAllureUids', () => {
+  const tree = {
+    name: 'suites',
+    uid: 'root',
+    children: [
+      {
+        name: 'ui',
+        uid: 'suite-ui',
+        children: [
+          {
+            name: 'ui/links.spec.ts',
+            uid: 'suite-links-file',
+            children: [
+              {
+                name: 'DemoQA UI @ Links',
+                uid: 'suite-links-describe',
+                children: [{ name: 'Clicking "Moved" reports a 301', uid: 'test-links-301' }],
+              },
+            ],
+          },
+          {
+            name: 'ui/web-tables.spec.ts',
+            uid: 'suite-tables-file',
+            children: [
+              {
+                name: 'DemoQA UI @ Web Tables',
+                uid: 'suite-tables-describe',
+                // Same leaf title as another file, on purpose — the matcher must walk the whole
+                // chain, not just match on the leaf, or it would return the wrong test's uid.
+                children: [{ name: 'Clicking "Moved" reports a 301', uid: 'test-tables-301' }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  test('resolves the suite and test uid for a matching testTitlePath', () => {
+    const result = findAllureUids(tree, ' > ui > ui/links.spec.ts > DemoQA UI @ Links > Clicking "Moved" reports a 301');
+
+    expect(result).toEqual({ suiteUid: 'suite-links-describe', testUid: 'test-links-301' });
+  });
+
+  test('matches the full chain, not just the leaf title — same leaf title under a different file resolves to a different uid', () => {
+    const result = findAllureUids(tree, ' > ui > ui/web-tables.spec.ts > DemoQA UI @ Web Tables > Clicking "Moved" reports a 301');
+
+    expect(result).toEqual({ suiteUid: 'suite-tables-describe', testUid: 'test-tables-301' });
+  });
+
+  test('returns null when a segment has no matching node', () => {
+    const result = findAllureUids(tree, ' > ui > ui/links.spec.ts > DemoQA UI @ Links > A title that does not exist');
+
+    expect(result).toBeNull();
+  });
+
+  test('returns null for an empty testTitlePath', () => {
+    expect(findAllureUids(tree, '')).toBeNull();
   });
 });

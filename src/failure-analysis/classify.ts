@@ -2,7 +2,7 @@ import { StepEvent, TestSummaryEvent } from '../observability/types';
 import { HealEvent, healEventsInWindow, renderStrategy } from './heal-events';
 import { CONTRACT_VIOLATION_PREFIX } from '../api/contract';
 
-export type FailureCategory = 'config' | 'ai-quota' | 'ai-healing' | 'contract' | 'assertion' | 'other';
+export type FailureCategory = 'config' | 'ai-quota' | 'ai-healing' | 'contract' | 'assertion' | 'network' | 'other';
 
 export interface FailureGroup {
   category: FailureCategory;
@@ -42,6 +42,11 @@ function categorize(message: string, stackTop: string[] | undefined): FailureCat
   if (/^Error: expect/.test(message) || message.includes('toBe') || message.includes('toEqual')) {
     return 'assertion';
   }
+  // Transport-level failures (connection reset, DNS, timeout reaching the page) — the target site
+  // or network dropped the request before any assertion ran, not a wrong expectation and not this
+  // suite's own code. Matched on Playwright's own net::ERR_* prefix and page.goto's wording rather
+  // than a broad "network" keyword, which would also match unrelated strings like a test title.
+  if (message.includes('net::ERR_') || message.includes('page.goto:')) return 'network';
   return 'other';
 }
 
