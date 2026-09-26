@@ -1,9 +1,11 @@
 [
   {
     "signature": "Error: expect(locator).toBeVisible() failed",
-    "testTitlePaths": [" > ui > ui/web-tables.spec.ts > DemoQA UI @ Web Tables > Adds a new record and it appears in the table"],
-    "addedAt": "2026-09-25T00:00:00+00:00",
-    "expiresAt": "2026-10-09T00:00:00+00:00",
-    "reason": "Flaky in 6/10 of the last runs (DemoQA table re-render race after adding a row \u2014 see quarantine-candidates.json). Assertion itself is correct; underlying page timing needs a fix, tracked separately."
+    "testTitlePaths": [
+      " > ui > ui/demo-flaky.spec.ts > DemoQA UI @ Check Box (demo flaky — assertion) > demo: flaky on a one-off selection assertion miss"
+    ],
+    "addedAt": "2026-09-26T00:00:00+00:00",
+    "expiresAt": "2026-10-24T00:00:00+00:00",
+    "reason": "Demo entry for presentation purposes — deterministically flaky by design (tests/ui/demo-flaky.spec.ts, DEMO_FAILURE=1 only, never runs in CI). Flaky in 3/3 local demo runs."
   }
 ]

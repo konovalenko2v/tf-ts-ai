@@ -1,18 +1,22 @@
 [
   {
-    "signature": "Error: expect(locator).toBeVisible() failed",
-    "category": "assertion",
-    "testTitlePaths": [" > ui > ui/web-tables.spec.ts > DemoQA UI @ Web Tables > Adds a new record and it appears in the table"],
-    "occurrences": 6,
-    "windowSize": 10,
-    "sampleRunFiles": ["run-202609201.jsonl", "run-202609203.jsonl", "run-202609204.jsonl"]
+    "signature": "Error: page.goto: net::ERR_CONNECTION_RESET at https://demoqa.com/text-box",
+    "category": "network",
+    "testTitlePaths": [
+      " > ui > ui/demo-flaky.spec.ts > DemoQA UI @ Text Box (demo flaky — network) > demo: flaky on a simulated connection reset"
+    ],
+    "occurrences": 3,
+    "windowSize": 3,
+    "sampleRunFiles": [".observability/run-be38b04d.jsonl", ".observability/run-40ea89d0.jsonl", ".observability/run-c08e2085.jsonl"]
   },
   {
-    "signature": "Error: page.goto: net::ERR_CONNECTION_RESET at \"…\"",
-    "category": "network",
-    "testTitlePaths": [" > ui > ui/links.spec.ts > DemoQA UI @ Links > Clicking \"Moved\" reports a 301 Moved Permanently response"],
-    "occurrences": 4,
-    "windowSize": 10,
-    "sampleRunFiles": ["run-202609202.jsonl", "run-202609205.jsonl", "run-202609207.jsonl"]
+    "signature": "Error: expect(locator).toBeVisible() failed",
+    "category": "assertion",
+    "testTitlePaths": [
+      " > ui > ui/demo-flaky.spec.ts > DemoQA UI @ Check Box (demo flaky — assertion) > demo: flaky on a one-off selection assertion miss"
+    ],
+    "occurrences": 3,
+    "windowSize": 3,
+    "sampleRunFiles": [".observability/run-be38b04d.jsonl", ".observability/run-40ea89d0.jsonl", ".observability/run-c08e2085.jsonl"]
   }
 ]
