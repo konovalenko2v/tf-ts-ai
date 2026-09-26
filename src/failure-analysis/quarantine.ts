@@ -129,6 +129,11 @@ export function readQuarantineList(file = QUARANTINE_FILE): QuarantineEntry[] {
   return JSON.parse(fs.readFileSync(file, 'utf-8')) as QuarantineEntry[];
 }
 
+export function readCandidates(file = QUARANTINE_CANDIDATES_FILE): QuarantineCandidate[] {
+  if (!fs.existsSync(file)) return [];
+  return JSON.parse(fs.readFileSync(file, 'utf-8')) as QuarantineCandidate[];
+}
+
 // TTL is not decoration: an entry past expiresAt is a decision someone must make (renew, or
 // unquarantine), not a permanent exemption from the gate. The CI gate step calls this and fails
 // loudly on any hit — see the "Gate on shard results" step in regression.yml.
