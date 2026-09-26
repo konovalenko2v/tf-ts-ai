@@ -115,7 +115,13 @@ export default defineConfig({
       name: 'ui',
       testMatch: '**/tests/ui/**/*.spec.ts',
       timeout: 60_000,
-      use: { ...devices['Desktop Chrome'], headless: !process.env.HEADFUL },
+      // process.env.HEADFUL is always a string (or undefined) — `!process.env.HEADFUL` was
+      // truthy-checking existence, so HEADFUL=false still opened a headful browser. Accept the
+      // documented '1' (.env.example) and 'true' as the only ways to opt in.
+      use: {
+        ...devices['Desktop Chrome'],
+        headless: process.env.HEADFUL !== '1' && process.env.HEADFUL !== 'true',
+      },
     },
   ],
 });

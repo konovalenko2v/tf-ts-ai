@@ -181,7 +181,7 @@ export function renderDashboard(data: DashboardData): string {
   .card.proposed .num { color: var(--amber); }
   .card.quarantined .num { color: var(--purple); }
   .card.coverage .num { color: var(--blue); }
-  .card.mutation .num { color: var(--blue); white-space: nowrap; }
+  .card.mutation .num { color: var(--blue); white-space: nowrap; font-size: 1.375rem; }
   .card.mutation .num.up { color: var(--green); }
   .card.mutation .num.down { color: var(--red); }
   h2 { font-size: 1.125rem; font-weight: 600; margin: 2rem 0 0.75rem; }
