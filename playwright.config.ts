@@ -8,7 +8,9 @@ import { config } from './src/core/config';
 
 export default defineConfig({
   testDir: './tests',
-  globalSetup: './src/core/global-setup.ts',
+  // Order matters: clean-allure-results must run before global-setup so a fresh allure-results/
+  // exists before any worker (and allure-playwright's reporter) starts writing to it.
+  globalSetup: ['./src/core/clean-allure-results.ts', './src/core/global-setup.ts'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
