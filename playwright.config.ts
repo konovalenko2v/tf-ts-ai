@@ -116,12 +116,13 @@ export default defineConfig({
     {
       name: 'ui',
       testMatch: '**/tests/ui/**/*.spec.ts',
-      // demo-failure.spec.ts always fails on purpose (see its own header comment) — excluded by
-      // default so it never runs in CI or a normal `npm test`, where it would permanently redden
-      // the required `test` check and block agent-fixer-verify-and-merge. DEMO_FAILURE=1 opts in
-      // for a one-off local run producing a red result across every report (Playwright HTML,
-      // Allure, ReportPortal, this project's own dashboard) for a demo/presentation.
-      testIgnore: process.env.DEMO_FAILURE ? [] : ['**/tests/ui/demo-failure.spec.ts'],
+      // demo-failure.spec.ts and demo-flaky.spec.ts always fail (or flake) on purpose (see their
+      // own header comments) — excluded by default so neither ever runs in CI or a normal
+      // `npm test`, where they would permanently redden the required `test` check and block
+      // agent-fixer-verify-and-merge. DEMO_FAILURE=1 opts in for a one-off local run producing
+      // real red/flaky results across every report (Playwright HTML, Allure, ReportPortal, this
+      // project's own dashboard) for a demo/presentation.
+      testIgnore: process.env.DEMO_FAILURE ? [] : ['**/tests/ui/demo-failure.spec.ts', '**/tests/ui/demo-flaky.spec.ts'],
       timeout: 60_000,
       // process.env.HEADFUL is always a string (or undefined) — `!process.env.HEADFUL` was
       // truthy-checking existence, so HEADFUL=false still opened a headful browser. Accept the
