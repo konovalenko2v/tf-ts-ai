@@ -241,10 +241,22 @@ test.describe('renderDashboard', () => {
     expect(html).toContain('&#39;');
   });
 
-  test('renders an explicit empty state when there are no failures', () => {
+  test('omits the "Failures by cause" section entirely when there are no failures', () => {
     const html = renderDashboard(baseData());
 
-    expect(html).toContain('No failing tests in this run.');
+    expect(html).not.toContain('Failures by cause');
+    expect(html).not.toContain('No failing tests in this run.');
+  });
+
+  test('shows the "Failures by cause" heading when there is at least one failure group', () => {
+    const events: ObservabilityEvent[] = [
+      makeTest({ testId: 't1', outcome: 'unexpected', error: { message: 'Error: expect(1).toBe(2)' } }),
+    ];
+    const data = buildDashboardData(events, []);
+
+    const html = renderDashboard(data);
+
+    expect(html).toContain('Failures by cause');
   });
 
   test('omits the "Proposed for quarantine" section entirely when nothing was proposed', () => {
