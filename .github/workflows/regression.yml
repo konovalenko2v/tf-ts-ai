@@ -428,6 +428,25 @@ jobs:
           path: allure-results
           merge-multiple: true
 
+      # Allure builds its History/Retries tabs and the Trend chart from allure-results/history/*
+      # present at generate time — it never remembers a previous run on its own. The live Pages
+      # site (only master push/workflow_dispatch ever deploys there — see the `deploy` job's `if:`)
+      # already has last run's history/ published at its own history/ path, so fetching it here is
+      # how continuity survives across otherwise-stateless CI runs. A PR run reads master's history
+      # but (per that same `if:`) never publishes back into it, so this can't race with itself.
+      # curl -f, `|| true` per file, and this step's own `continue-on-error` on top of it all: the
+      # very first run (nothing published yet, 404) or a Pages outage must degrade to "no history"
+      # silently, never turn the required `test` check red over a report-only page (CLAUDE.md #5).
+      - name: Fetch previous Allure history from the published report
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p allure-results/history
+          base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/history"
+          for f in history.json history-trend.json categories-trend.json duration-trend.json retry-trend.json; do
+            curl -fsS "$base/$f" -o "allure-results/history/$f" || true
+          done
+
       # Coverage now runs exactly once, inside the `unit` job — this just picks up that job's
       # coverage-summary.json artifact (json-summary reporter, alongside the human-readable ones)
       # for the dashboard step below to read. continue-on-error: a PR should still get its report
