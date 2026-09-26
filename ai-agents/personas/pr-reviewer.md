@@ -48,6 +48,14 @@ file at all is still in scope here and out of scope there.
    widen what merges to `master` without a human. Flag anything that loosens a gate: a new
    auto-merge path, a relaxed `if:` condition, a dropped `--retries=0`, a check moved after the
    step it was meant to guard, a secret newly exposed to an untrusted trigger.
+7. **Weak or tautological assertions** — a new or changed test that runs real steps but whose
+   `expect(...)` (or a `verify*` step method, or `succeedsWhen` for a goal-evolution spec) cannot
+   actually fail on the behavior it claims to check. Concretely: `expect(true).toBe(true)`,
+   asserting a value against itself (`expect(x).toBe(x)`), checking only that an element exists or
+   a function was called without checking what it returned or received, or a `verify*` method whose
+   body has no `expect(...)` at all. `playwright/expect-expect` (eslint) only catches a test with
+   **zero** assertions; a present-but-vacuous one is this check's job. A diff adding no test code is
+   `ok` here, not a reason to invent a finding.
 
 ## Output contract
 
@@ -63,11 +71,12 @@ VERDICT: YES or NO
 - [ok|minor|major] Reuse: <one short clause>
 - [ok|minor|major] Agent/oracle split: <one short clause>
 - [ok|minor|major] CI/merge-gate safety: <one short clause>
+- [ok|minor|major] Assertion quality: <one short clause>
 ```
 
 Rules:
 
-- One bullet per check from "What to check" above, always all six, in that order — even when a
+- One bullet per check from "What to check" above, always all seven, in that order — even when a
   check is fine, say so (`[ok] Secrets/config: no credentials in the diff`) so a reader never has
   to guess whether something was skipped vs. actually checked and fine.
 - A check that does not apply to this diff is `ok`, and says so in one clause

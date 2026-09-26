@@ -800,9 +800,10 @@ event against `master`.
    default 200KB — the truncation is stated in the prompt, so the persona never reports "scope looks
    fine" on hunks it was not shown).
 2. The diff, PR title and description go to the model under `ai-agents/personas/pr-reviewer.md`,
-   which checks six things: correctness, scope creep, hardcoded secrets/config, reinvented
-   abstractions, the goal-evolution agent/oracle split, and CI/merge-gate safety — i.e. this repo's
-   own "Critical rules" from `CLAUDE.md`, plus plain correctness.
+   which checks seven things: correctness, scope creep, hardcoded secrets/config, reinvented
+   abstractions, the goal-evolution agent/oracle split, CI/merge-gate safety, and weak or
+   tautological test assertions — i.e. this repo's own "Critical rules" from `CLAUDE.md`, plus
+   plain correctness and assertion quality.
 3. The verdict is printed, written to the job summary, and posted as a PR comment.
 4. Exit code: **non-zero only on a `major` finding.**
 
