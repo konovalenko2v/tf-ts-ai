@@ -253,6 +253,33 @@ test.describe('renderDashboard', () => {
     expect(html).not.toContain('Proposed for quarantine (this run)');
   });
 
+  test('project cards always show Passed but hide Failed/Flaky/Quarantined labels when their count is zero', () => {
+    const data = buildDashboardData([makeTest({ testId: 't1', project: 'api', outcome: 'expected' })], []);
+
+    const html = renderDashboard(data);
+
+    expect(html).toContain('<dt>Passed</dt><dd>1</dd>');
+    expect(html).not.toContain('<dt>Failed</dt>');
+    expect(html).not.toContain('<dt>Flaky</dt>');
+    expect(html).not.toContain('<dt>Quarantined</dt>');
+  });
+
+  test('project card shows a nonzero label alongside Passed, still hiding the still-zero ones', () => {
+    const events: ObservabilityEvent[] = [
+      makeTest({ testId: 't1', project: 'ui', outcome: 'expected' }),
+      makeTest({ testId: 't2', project: 'ui', outcome: 'unexpected', error: { message: 'x' } }),
+    ];
+
+    const data = buildDashboardData(events, []);
+
+    const html = renderDashboard(data);
+
+    expect(html).toContain('<dt>Passed</dt><dd>1</dd>');
+    expect(html).toContain('<dt>Failed</dt><dd>1</dd>');
+    expect(html).not.toContain('<dt>Flaky</dt>');
+    expect(html).not.toContain('<dt>Quarantined</dt>');
+  });
+
   test('includes the top-line counts and a link back to the Allure report', () => {
     const data = buildDashboardData(
       [

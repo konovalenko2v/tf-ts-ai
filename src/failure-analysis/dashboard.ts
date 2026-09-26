@@ -170,21 +170,27 @@ function renderGroup(g: FailureGroup): string {
     </article>`;
 }
 
+// Passed always renders, even at 0 — otherwise a project with nothing but failures would show an
+// empty card. Failed/flaky/quarantined only render when nonzero: a wall of "Failed 0 Flaky 0
+// Quarantined 0" on every card buries the one number that actually needed attention.
 function renderProjectBreakdown(byProject: ProjectBreakdown[]): string {
   if (byProject.length === 0) return '';
   const cards = byProject
-    .map(
-      (p) => `
+    .map((p) => {
+      const stats = [
+        `<div class="stat-passed"><dt>Passed</dt><dd>${p.passed}</dd></div>`,
+        p.failed > 0 ? `<div class="stat-failed"><dt>Failed</dt><dd>${p.failed}</dd></div>` : '',
+        p.flaky > 0 ? `<div class="stat-flaky"><dt>Flaky</dt><dd>${p.flaky}</dd></div>` : '',
+        p.quarantined > 0 ? `<div class="stat-quarantined"><dt>Quarantined</dt><dd>${p.quarantined}</dd></div>` : '',
+      ]
+        .filter(Boolean)
+        .join('');
+      return `
     <div class="project-card">
       <div class="project-name">${escapeHtml(p.project)}</div>
-      <dl class="project-stats">
-        <div class="stat-passed"><dt>Passed</dt><dd>${p.passed}</dd></div>
-        <div class="stat-failed"><dt>Failed</dt><dd>${p.failed}</dd></div>
-        <div class="stat-flaky"><dt>Flaky</dt><dd>${p.flaky}</dd></div>
-        <div class="stat-quarantined"><dt>Quarantined</dt><dd>${p.quarantined}</dd></div>
-      </dl>
-    </div>`,
-    )
+      <dl class="project-stats">${stats}</dl>
+    </div>`;
+    })
     .join('');
   return `
   <h2>By project</h2>
