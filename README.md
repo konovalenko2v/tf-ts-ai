@@ -446,26 +446,61 @@ gets auto-merged, so it stays uncalled until that gate is designed deliberately 
 GitHub Pages alongside the Allure report (`/dashboard/`, linked back to Allure with `↩`), not
 merged into it. One glance: passed/failed/flaky/skipped counts, failures grouped by cause (the
 same six categories and labels as the report above, reused via `CATEGORY_LABELS` — not a second
-copy), and quarantine state — currently-quarantined count plus tests proposed for quarantine
+copy), quarantine state — currently-quarantined count plus tests proposed for quarantine
 _this run_ (honestly labelled: `quarantine-history.jsonl` doesn't persist across CI runs today,
-so this isn't yet "flaky in N of the last 10"). Self-contained (inline CSS, dark mode via
-`prefers-color-scheme`, no CDN, no JS) and read-only — it never calls `updateCandidatesFromRun`
-or writes any quarantine file.
+so this isn't yet "flaky in N of the last 10") — plus two test-quality signals, both optional
+(render "n/a" when their input file is absent, e.g. a local `npm run dashboard` with neither
+generated):
 
-`regression.yml`'s `test` job merges every shard's `.observability/run-*.jsonl` before rendering.
-Playwright's `testId` is a stable hash of `(file, title)` — deliberately identical across shards
-for the same test — so a naive merge collides two shards' events under one key and silently drops
-half the tests; `namespaceTestIds()` prefixes each event's `testId` with its `runId` before
-anything downstream (`classify.ts`'s dedupe) sees it, fixing the merge without changing that
-module's contract for its other caller (`failure-analysis/run.ts`, always a single run file).
+- **Unit test coverage** — c8's `coverage/coverage-summary.json` (`json-summary` reporter,
+  alongside the existing text/lcov ones), line coverage over the `unit`+`contract` projects.
+- **Mutation score (gate modules)** — Stryker's score for the 3 CI merge-gate files
+  (`stryker.config.json`'s `mutate` list), read from the committed `reports/mutation-summary.json`
+  (`src/failure-analysis/mutation-summary.ts`, `npm run mutation-summary`). Shown as
+  `baseline% → current%` once the two differ (e.g. after fixing a survived mutant — a test that
+  keeps passing even when the code it's meant to check was changed), or a bare `current%` when
+  they match. `baseline` is written once, on the first run with no existing snapshot, and carried
+  forward afterward — `current` is what every later run refreshes. Committed on purpose, not
+  gitignored: `mutation.yml` is its own path-filtered workflow (only runs when one of those 3
+  files or their tests change) with no direct route to `regression.yml`'s dashboard-building job,
+  and `master`'s branch protection blocks a push straight from CI anyway — so a human (or a PR
+  from the branch that changed the gate modules) commits the refreshed snapshot, the same
+  propose/promote split `quarantine.json` already uses.
 
-The `deploy` job publishes to Pages on every run, PR included (the `github-pages` environment's
-deployment branch policy was widened from `master`-only to `*`). The tradeoff: Pages serves exactly
-one URL per repo, not one per PR — whichever run deploys last (any branch) is what that URL shows,
-so two PRs' CI running close together overwrite each other's live report. The report (Allure + this
-dashboard) is also built and uploaded as a downloadable artifact on every run, red or green; the
-`test` job posts (and updates, not duplicates) a PR comment linking to it — the reliable way to see
-one specific run's results once a later run has deployed over the live site.
+Self-contained (inline CSS, dark mode via `prefers-color-scheme`, no CDN, no JS) and read-only for
+everything test-result-shaped — it never calls `updateCandidatesFromRun` or writes any quarantine
+file.
+
+Unit + contract tests run exactly once, in their own `unit` job — not as a step inside `test-shard`
+or, previously, re-run a second time by an "informational coverage" step in the aggregate `test`
+job (which used to happen, double-counting every unit test in the dashboard's totals; moving
+coverage into the dedicated `unit` job and having `test` just download its `coverage-summary`
+artifact removed the second run instead of trying to de-duplicate it after the fact). `test-shard`
+(api/graphql/ui only now) and the aggregate `test` job both `needs: unit`, so a red unit/contract
+test fails the required check the same way a red shard does, rather than only showing up in an
+informational step nothing actually gated on.
+
+`regression.yml`'s `test` job merges every shard's (plus `unit`'s own) `.observability/run-*.jsonl`
+before rendering. Playwright's `testId` is a stable hash of `(file, title)` — deliberately
+identical across shards for the same test — so a naive merge collides two shards' events under one
+key and silently drops half the tests; `namespaceTestIds()` prefixes each event's `testId` with its
+`runId` before anything downstream (`classify.ts`'s dedupe) sees it, fixing the merge without
+changing that module's contract for its other caller (`failure-analysis/run.ts`, always a single
+run file).
+
+The `deploy` job publishes to Pages only on `push`/`workflow_dispatch` against `master` — a PR run
+skips it (no live Pages URL to show for a branch that hasn't merged yet, and the `github-pages`
+environment's deployment-branch-policy only allows `master` anyway). The report (Allure + this
+dashboard) is still built and uploaded as a downloadable artifact on every run, red or green; the
+`test` job posts (and updates, not duplicates) a PR comment linking to it.
+
+A PR's `Run tests` step now forwards `--shard=N/M` (plus a `--project` filter) into
+`npm run test:affected` itself (`src/test-selection/run.ts` passes through any extra CLI args,
+with `--pass-with-no-tests` so a shard with nothing matching still passes rather than failing on
+zero tests) — previously `test:affected`'s fixed argv couldn't take `--shard` at all, so both
+shards silently re-ran the WHOLE affected set instead of splitting it, doubling every PR's real
+test count (and CI time) for no benefit; this is what an exact ×2 on every failure group in the
+dashboard used to mean on a PR run.
 
 ### Flaky-test quarantine (detection + TTL only — no merge-gate exemption yet)
 
@@ -592,16 +627,33 @@ driver that hardcoded it would pass once and rot on the next run; for `book-stor
 accept the username as a parameter rather than hardcoding one, so the harness (not the driver) controls the
 identity the oracle checks — before compiling and running the oracle spec.
 
-**Stopping and reporting when a goal can't be reached.** A goal fails to resolve for one of three distinct
+**Stopping and reporting when a goal can't be reached.** A goal fails to resolve for one of four distinct
 reasons, and `run.ts` reports which: (1) generation itself hangs — bounded by a per-attempt wall-clock timeout on
 the Claude CLI call (`ATTEMPT_TIMEOUT_MS`, via `cli-fallback.ts`'s `CliTimeoutError` — a timeout is re-thrown
 immediately rather than silently falling through to the Gemini fallback tiers, so it isn't misreported as "the
 model failed"); (2) the driver comes back but violates its contract (writes its own `expect(...)`, hardcodes an
 identity) — not retried, since a second generation attempt is unlikely to fix a rule violation differently; (3)
-the driver is clean but the **oracle** fails — retried up to `MAX_ATTEMPTS` (2, kept low deliberately: each
-`book-store-register-user` attempt registers a real user on demoqa.com), and the final report explicitly points at
-the goal's `pageKnowledgeFile` as the likely cause, since a clean driver failing the oracle repeatedly is usually
-the page-knowledge file being wrong or stale, not an agent mistake.
+the driver fails to compile (`npx tsc --noEmit`) — retried up to `MAX_ATTEMPTS`, and (unlike before) the actual
+compiler error is fed into the retry's prompt, see "Feedback loop" below; (4) the driver compiles but the
+**oracle** fails — also retried up to `MAX_ATTEMPTS` (2, kept low deliberately: each `book-store-register-user`
+attempt registers a real user on demoqa.com), and the final report explicitly points at the goal's
+`pageKnowledgeFile` as the likely cause, since a clean driver failing the oracle repeatedly is usually the
+page-knowledge file being wrong or stale, not an agent mistake.
+
+**Feedback loop in goal-evolution.** Before this, a retry (reason 3 or 4 above) re-sent the exact same prompt —
+the model never saw why its previous attempt failed, so a mistake in the _approach_ (not the goal) could repeat
+identically. Now `run.ts` captures the real failure text (the `tsc` error, or the oracle spec's failure output)
+and `propose-driver.ts` folds it into the next attempt's prompt as a "Your previous attempt failed" block. This
+is orthogonal to which layer the model chose (UI vs. API) or how many steps it decided to take — it doesn't
+constrain _how_ the goal gets solved, only gives the model its own last mistake back before it tries again. That
+also means it applies the same way to any goal added to `REGISTRY` later, prose-only or not: the loop reads
+`lastFailure` off whatever `tsc`/Playwright actually printed, never anything specific to one goal's steps.
+One real, already-documented case this would have caught: `book-store-remove-books`'s second attempt had the
+right approach (login, per-row `href`-based ISBN extraction, no bulk-delete shortcut) but used
+`page.waitForFunction`, unavailable under this repo's `tsconfig` (`lib: ["ES2022"]`, no `dom`) — a human fixed
+that one wait by hand because nothing surfaced the compiler error back to a further attempt.
+This does **not** help contract violations (reason 2) — a rule violation isn't a mistake a retry with more
+context is likely to fix differently, so those still fail fast without a retry.
 
 **Three goals, three things each proves:**
 

@@ -22,13 +22,34 @@ export interface DashboardData {
   quarantinedExpiredCount: number;
   proposedForQuarantineCount: number;
   proposedForQuarantine: { signature: string; category: FailureGroup['category']; testTitlePaths: string[] }[];
+  // null, not a missing field: c8 coverage/coverage-summary.json (unit+contract's line coverage,
+  // "did any test execute this code") and Stryker's reports/mutation-summary.json (the 3 CI
+  // gate modules' mutation score, "would any test have NOTICED this code breaking") are both
+  // optional inputs this dashboard doesn't generate itself — a run/branch that hasn't produced
+  // one yet, or a local `npm run dashboard` with neither file present, must render "n/a" rather
+  // than crash or silently show 0%.
+  coveragePct: number | null;
+  // baseline/current, not a single number: shows "was X%, now Y%" for the gate modules' mutation
+  // score, so fixing a survived mutant ("zombie test" — one that keeps passing after the code it's
+  // meant to check was changed) has a visible before/after, not just the latest point-in-time
+  // number. baseline is whatever mutation-summary.ts first recorded; current is its most recent
+  // run — see that file's mergeWithExisting for how the two diverge over time.
+  mutationScoreBaselinePct: number | null;
+  mutationScoreCurrentPct: number | null;
 }
 
 // Counts outcomes, not attempts — a test that fails on attempt 0 and passes on retry 1 is one
 // flaky test, not one failure plus one pass. latestAttemptPerTest is the same dedupe classify.ts's
 // groupFailures() already relies on for its own counts, reused rather than re-implemented so the
 // two never drift apart on what "one test" means.
-export function buildDashboardData(events: ObservabilityEvent[], quarantine: QuarantineEntry[], now = new Date()): DashboardData {
+export function buildDashboardData(
+  events: ObservabilityEvent[],
+  quarantine: QuarantineEntry[],
+  now = new Date(),
+  coveragePct: number | null = null,
+  mutationScoreBaselinePct: number | null = null,
+  mutationScoreCurrentPct: number | null = null,
+): DashboardData {
   const allTests = events.filter((e): e is TestSummaryEvent => e.type === 'test');
   const latest = latestAttemptPerTest(allTests);
 
@@ -56,11 +77,23 @@ export function buildDashboardData(events: ObservabilityEvent[], quarantine: Qua
       category: p.category as FailureGroup['category'],
       testTitlePaths: p.testTitlePaths,
     })),
+    coveragePct,
+    mutationScoreBaselinePct,
+    mutationScoreCurrentPct,
   };
 }
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+// "n/a" when neither is known; a bare "X%" once baseline and current are equal (no drift yet, or
+// the first run — see mergeWithExisting) rather than the redundant "X% → X%"; otherwise the arrow
+// form the user asked to see: the score before fixing survived mutants, then after.
+function renderMutationScore(baselinePct: number | null, currentPct: number | null): string {
+  if (currentPct === null) return 'n/a';
+  if (baselinePct === null || baselinePct === currentPct) return `${currentPct}%`;
+  return `${baselinePct}% → ${currentPct}%`;
 }
 
 function renderGroup(g: FailureGroup): string {
@@ -140,6 +173,8 @@ export function renderDashboard(data: DashboardData): string {
   .card.failed .num { color: var(--red); }
   .card.proposed .num { color: var(--amber); }
   .card.quarantined .num { color: var(--purple); }
+  .card.coverage .num { color: var(--blue); }
+  .card.mutation .num { color: var(--blue); }
   h2 { font-size: 1.125rem; font-weight: 600; margin: 2rem 0 0.75rem; }
   .muted { color: var(--muted); font-size: 0.875rem; }
   .group {
@@ -196,6 +231,8 @@ export function renderDashboard(data: DashboardData): string {
     <div class="card failed"><div class="num">${data.failed}</div><div class="label">Failed</div></div>
     <div class="card proposed"><div class="num">${data.proposedForQuarantineCount}</div><div class="label">Proposed for quarantine</div></div>
     <div class="card quarantined"><div class="num">${data.quarantinedCount}</div><div class="label">Currently quarantined</div></div>
+    <div class="card coverage"><div class="num">${data.coveragePct !== null ? data.coveragePct + '%' : 'n/a'}</div><div class="label">Unit test coverage</div></div>
+    <div class="card mutation"><div class="num">${renderMutationScore(data.mutationScoreBaselinePct, data.mutationScoreCurrentPct)}</div><div class="label">Mutation score (gate modules)</div></div>
   </div>
 
   <h2>Failures by cause</h2>
@@ -242,10 +279,42 @@ function readAllRunEvents(dir: string): ObservabilityEvent[] {
   return namespaceTestIds(events);
 }
 
+const COVERAGE_SUMMARY_PATH = path.join('coverage', 'coverage-summary.json');
+const MUTATION_SUMMARY_PATH = path.join('reports', 'mutation-summary.json');
+
+// Both optional: a local `npm run dashboard` run, or a CI run whose coverage/mutation-summary
+// artifact download step was skipped (both use continue-on-error, same policy as this whole
+// dashboard step in regression.yml — a report-only page must never crash the pipeline), leaves
+// these files absent. buildDashboardData's coveragePct/mutationScorePct default to null for
+// exactly this reason.
+function readCoveragePct(): number | null {
+  if (!fs.existsSync(COVERAGE_SUMMARY_PATH)) return null;
+  try {
+    const summary = JSON.parse(fs.readFileSync(COVERAGE_SUMMARY_PATH, 'utf-8')) as { total?: { lines?: { pct?: number } } };
+    return summary.total?.lines?.pct ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function readMutationScores(): { baseline: number | null; current: number | null } {
+  if (!fs.existsSync(MUTATION_SUMMARY_PATH)) return { baseline: null, current: null };
+  try {
+    const summary = JSON.parse(fs.readFileSync(MUTATION_SUMMARY_PATH, 'utf-8')) as {
+      baseline?: { scorePct?: number | null };
+      current?: { scorePct?: number | null };
+    };
+    return { baseline: summary.baseline?.scorePct ?? null, current: summary.current?.scorePct ?? null };
+  } catch {
+    return { baseline: null, current: null };
+  }
+}
+
 function main(): void {
   const events = readAllRunEvents(OBSERVABILITY_DIR);
   const quarantine = readQuarantineList();
-  const data = buildDashboardData(events, quarantine);
+  const mutationScores = readMutationScores();
+  const data = buildDashboardData(events, quarantine, new Date(), readCoveragePct(), mutationScores.baseline, mutationScores.current);
   const html = renderDashboard(data);
 
   const outDir = process.argv[2] ?? path.join('allure-report', 'dashboard');

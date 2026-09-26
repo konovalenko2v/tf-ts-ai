@@ -38,7 +38,7 @@ const MAX_ATTEMPTS = 2; // see book-store-register-user.ts: each attempt can reg
 const ATTEMPT_TIMEOUT_MS = 5 * 60 * 1000; // generation-only; the oracle spec run isn't bounded by
 // this (Playwright's own test timeout already governs that).
 
-type StopReason = 'generation-timeout' | 'contract-violation' | 'oracle-failed' | 'achieved';
+type StopReason = 'generation-timeout' | 'contract-violation' | 'compile-failed' | 'oracle-failed' | 'achieved';
 
 interface RunEntry {
   // Goal<any>: run.ts only ever reads id/description/driverFile/contractChecks, never the
@@ -107,6 +107,15 @@ function report(entry: RunEntry, attempt: number, reason: StopReason, detail: st
       `Each attempt was capped at ${ATTEMPT_TIMEOUT_MS}ms of Claude CLI time — raise ATTEMPT_TIMEOUT_MS in run.ts if this goal is legitimately harder, not just retry blindly.`,
     );
   }
+  if (reason === 'compile-failed') {
+    lines.push(
+      '',
+      `Every attempt (including at least one retry that saw the previous compile error — see`,
+      'propose-driver.ts) still failed to compile. The agent may be reaching for an API this',
+      'repo\'s tsconfig doesn\'t expose (e.g. a DOM lib call under lib: ["ES2022"]) — check the error',
+      'above for a hint that a human, not another retry, needs to resolve.',
+    );
+  }
 
   process.stderr.write(lines.join('\n') + '\n');
 }
@@ -117,6 +126,12 @@ async function main(): Promise<void> {
   }
 
   const driverPath = path.join(__dirname, '../..', entry.goal.driverFile);
+  // Fed into the next attempt's prompt (see propose-driver.ts's priorFailure param) so a retry sees
+  // exactly why it failed instead of repeating the same approach blind — see README §8's
+  // book-store-remove-books note: attempt 2's approach was correct, it just used a DOM API this
+  // repo's tsconfig doesn't expose, and a human had to point that out because nothing fed the tsc
+  // error back to a third attempt.
+  let lastFailure: string | undefined;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // Unlike test-evolution/run.ts (branch + abandon()), this demo runs directly against the
@@ -136,7 +151,7 @@ async function main(): Promise<void> {
         `[goal-evolution] attempt ${attempt}/${MAX_ATTEMPTS}: resolving goal "${entry.goal.id}": ${entry.goal.description}\n`,
       );
       try {
-        proposeDriver(entry.goal, ATTEMPT_TIMEOUT_MS);
+        proposeDriver(entry.goal, ATTEMPT_TIMEOUT_MS, lastFailure);
       } catch (err) {
         if (err instanceof CliTimeoutError) {
           if (attempt === MAX_ATTEMPTS) {
@@ -175,17 +190,41 @@ async function main(): Promise<void> {
     }
 
     process.stderr.write('[goal-evolution] driver contract OK — compiling\n');
-    execFileSync('npx', ['tsc', '--noEmit'], { stdio: 'inherit' });
-
-    process.stderr.write(`[goal-evolution] running the fixed oracle spec (${entry.specFile})\n`);
     try {
-      execFileSync('npx', ['playwright', 'test', entry.specFile, `--project=${entry.project}`, '--retries=0'], { stdio: 'inherit' });
+      // Captured via 'pipe' (not 'inherit') specifically so a compile failure's actual error text
+      // can be fed back into the next attempt's prompt — see propose-driver.ts's priorFailure and
+      // README §8's book-store-remove-books note, where a `page.waitForFunction` call that doesn't
+      // compile under this repo's DOM-less tsconfig was exactly this failure mode, undetected by
+      // any prior attempt because nothing surfaced the tsc error programmatically.
+      execFileSync('npx', ['tsc', '--noEmit'], { stdio: ['inherit', 'pipe', 'pipe'], encoding: 'utf-8' });
     } catch (err) {
+      const output = [(err as { stdout?: string }).stdout, (err as { stderr?: string }).stderr].filter(Boolean).join('\n');
+      process.stdout.write(output + '\n');
       if (attempt === MAX_ATTEMPTS) {
-        report(entry, attempt, 'oracle-failed', (err as Error).message);
+        report(entry, attempt, 'compile-failed', output || (err as Error).message);
         process.exitCode = 1;
         return;
       }
+      lastFailure = `The driver failed to compile (npx tsc --noEmit):\n${output || (err as Error).message}`;
+      process.stderr.write(`[goal-evolution] attempt ${attempt}'s driver did not compile — retrying with a fresh driver\n`);
+      continue;
+    }
+
+    process.stderr.write(`[goal-evolution] running the fixed oracle spec (${entry.specFile})\n`);
+    try {
+      execFileSync('npx', ['playwright', 'test', entry.specFile, `--project=${entry.project}`, '--retries=0'], {
+        stdio: ['inherit', 'pipe', 'pipe'],
+        encoding: 'utf-8',
+      });
+    } catch (err) {
+      const output = [(err as { stdout?: string }).stdout, (err as { stderr?: string }).stderr].filter(Boolean).join('\n');
+      process.stdout.write(output + '\n');
+      if (attempt === MAX_ATTEMPTS) {
+        report(entry, attempt, 'oracle-failed', output || (err as Error).message);
+        process.exitCode = 1;
+        return;
+      }
+      lastFailure = `The driver compiled, but the fixed oracle spec failed against it:\n${output || (err as Error).message}`;
       process.stderr.write(`[goal-evolution] attempt ${attempt}'s oracle failed — retrying with a fresh driver\n`);
       continue;
     }

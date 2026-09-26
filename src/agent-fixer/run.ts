@@ -4,6 +4,7 @@ import { findRecoveries, findScreenshotForTest } from './find-recoveries';
 import { findByContext, loadHealedCache, renderLocatorExpression } from './cache-lookup';
 import { proposeFixWithAI } from './fix-proposer';
 import { riskTierFor, branchFor, ALLOWED_TARGET_FILES } from './safety-gates';
+import { locateInSource as locateInSourceText } from './locate-in-source';
 
 const SELF_HEAL_CACHE = '.self-heal/healed_locators.json';
 // run.ts itself only ever edits one file, by construction (locateInSource reads/writes TARGET_FILE
@@ -12,54 +13,23 @@ const SELF_HEAL_CACHE = '.self-heal/healed_locators.json';
 // unless this file is also updated to loop over multiple targets.
 const TARGET_FILE = ALLOWED_TARGET_FILES[0];
 const BRANCH_PREFIX = 'agent-fixer/';
-const SKIP_MARKER = 'agent-fixer: skip';
-
-interface BrokenLocator {
-  selector: string;
-  contextName: string;
-  lineIndex: number;
-  testId: string;
-}
 
 function currentBranch(): string {
   return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD']).toString().trim();
 }
 
-// A selector is skipped if the nearest non-blank line above it is a comment carrying the marker
-// — walking up stops at the first real code line, so it can't leak across an unrelated line.
-function isSkipped(fileLines: string[], matchLineIndex: number): boolean {
-  for (let i = matchLineIndex - 1; i >= 0; i--) {
-    const trimmed = fileLines[i].trim();
-    if (trimmed === '') continue;
-    if (!trimmed.startsWith('//')) return false;
-    if (trimmed.includes(SKIP_MARKER)) return true;
-  }
-  return false;
-}
-
-// Finds each broken selector's line in source and extracts the contextName paired with it in
-// `heal.click(locator('<selector>'), '<contextName>')` — that contextName is the exact join key
-// into healwright's cache (cache entry `context` field), so this is done once here rather than
-// re-derived downstream.
-function locateInSource(brokenSelectors: Map<string, string>): BrokenLocator[] {
-  const lines = fs.readFileSync(TARGET_FILE, 'utf-8').split('\n');
-  const found: BrokenLocator[] = [];
-  for (const [selector, testId] of brokenSelectors) {
-    const lineIndex = lines.findIndex((l) => l.includes(`this.page.locator('${selector}')`));
-    if (lineIndex === -1) {
-      process.stderr.write(`[agent-fixer] selector ${selector} not found in ${TARGET_FILE} — skipping\n`);
-      continue;
+// Thin I/O wrapper around locate-in-source.ts's pure locateInSource() — reads TARGET_FILE and logs
+// what got skipped and why, which the pure function itself has no business doing.
+function locateInSource(brokenSelectors: Map<string, string>) {
+  const source = fs.readFileSync(TARGET_FILE, 'utf-8');
+  const found = locateInSourceText(source, brokenSelectors);
+  const foundSelectors = new Set(found.map((f) => f.selector));
+  for (const selector of brokenSelectors.keys()) {
+    if (!foundSelectors.has(selector)) {
+      process.stderr.write(
+        `[agent-fixer] ${selector}: not found, skipped, or its context could not be resolved in ${TARGET_FILE} — skipping\n`,
+      );
     }
-    if (isSkipped(lines, lineIndex)) {
-      process.stderr.write(`[agent-fixer] ${selector} is marked "${SKIP_MARKER}" — leaving it untouched\n`);
-      continue;
-    }
-    const contextMatch = lines[lineIndex].match(/,\s*'([^']+)'\s*\)/);
-    if (!contextMatch) {
-      process.stderr.write(`[agent-fixer] could not extract contextName for ${selector} — skipping\n`);
-      continue;
-    }
-    found.push({ selector, contextName: contextMatch[1], lineIndex, testId });
   }
   return found;
 }

@@ -91,6 +91,24 @@ test.describe('renderVerdict', () => {
     expect(out).toContain('- ❌ **Reuse**:');
     expect(out).toContain('- ✅ **Correctness**:');
   });
+
+  test('renders the full "no blocking findings" headline verbatim on a clean verdict', () => {
+    const out = renderVerdict(parseReviewVerdict(CLEAN));
+    expect(out).toContain('**Overall: ✅ YES — no blocking findings**');
+  });
+
+  test('renders the ⚠️ icon for a minor-severity finding', () => {
+    const out = renderVerdict(parseReviewVerdict(CLEAN.replace('- [ok] Reuse:', '- [minor] Reuse:')));
+    expect(out).toContain('- ⚠️ **Reuse**:');
+  });
+
+  test('separates the headline from the bullet list with a blank line', () => {
+    const out = renderVerdict(parseReviewVerdict(CLEAN));
+    const lines = out.split('\n');
+    expect(lines[1]).toBe('');
+    expect(lines[0]).toContain('Overall:');
+    expect(lines[2]).toMatch(/^- /);
+  });
 });
 
 test.describe('truncateDiff', () => {
