@@ -120,6 +120,52 @@ test.describe('buildDashboardData', () => {
     expect(data.quarantinedExpiredCount).toBe(1);
   });
 
+  test('byProject counts passed/failed/flaky per Playwright project, ordered unit/contract/api/graphql/ui', () => {
+    const events: ObservabilityEvent[] = [
+      makeTest({ testId: 'u1', project: 'unit', outcome: 'expected' }),
+      makeTest({ testId: 'a1', project: 'api', outcome: 'unexpected', error: { message: 'Error: expect(1).toBe(2)' } }),
+      makeTest({ testId: 'g1', project: 'graphql', outcome: 'expected' }),
+      makeTest({ testId: 'w1', project: 'ui', outcome: 'flaky', retry: 0, error: { message: 'Error: x' } }),
+      makeTest({ testId: 'w1', project: 'ui', outcome: 'flaky', retry: 1 }),
+    ];
+
+    const data = buildDashboardData(events, []);
+
+    expect(data.byProject).toEqual([
+      { project: 'unit', passed: 1, failed: 0, flaky: 0, quarantined: 0 },
+      { project: 'api', passed: 0, failed: 1, flaky: 0, quarantined: 0 },
+      { project: 'graphql', passed: 1, failed: 0, flaky: 0, quarantined: 0 },
+      { project: 'ui', passed: 0, failed: 0, flaky: 1, quarantined: 0 },
+    ]);
+  });
+
+  test('byProject marks a test as quarantined without changing its passed/failed/flaky bucket', () => {
+    const events: ObservabilityEvent[] = [
+      makeTest({ testId: 't1', project: 'ui', testTitlePath: '> ui > flaky one', outcome: 'unexpected', error: { message: 'x' } }),
+    ];
+    const quarantine: QuarantineEntry[] = [
+      {
+        signature: 'x',
+        testTitlePaths: ['> ui > flaky one'],
+        addedAt: '2026-01-01T00:00:00Z',
+        expiresAt: '2099-01-01T00:00:00Z',
+        reason: 'flaky',
+      },
+    ];
+
+    const data = buildDashboardData(events, quarantine);
+
+    expect(data.byProject).toEqual([{ project: 'ui', passed: 0, failed: 1, flaky: 0, quarantined: 1 }]);
+  });
+
+  test('byProject omits a project with no events this run instead of showing an all-zero card', () => {
+    const events: ObservabilityEvent[] = [makeTest({ testId: 't1', project: 'api', outcome: 'expected' })];
+
+    const data = buildDashboardData(events, []);
+
+    expect(data.byProject).toEqual([{ project: 'api', passed: 1, failed: 0, flaky: 0, quarantined: 0 }]);
+  });
+
   test('an empty event list produces an empty-state dashboard, not a crash', () => {
     const data = buildDashboardData([], []);
 
