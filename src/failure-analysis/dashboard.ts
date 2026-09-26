@@ -8,7 +8,7 @@ import * as path from 'path';
 import { ObservabilityEvent, TestSummaryEvent } from '../observability/types';
 import { FailureGroup, groupFailures, latestAttemptPerTest } from './classify';
 import { CATEGORY_LABELS } from './run';
-import { QuarantineEntry, expiredEntries, flakyHistoryEntries, readQuarantineList } from './quarantine';
+import { QuarantineCandidate, QuarantineEntry, expiredEntries, isQuarantined, readCandidates, readQuarantineList } from './quarantine';
 
 export interface DashboardData {
   generatedAt: string;
@@ -49,6 +49,7 @@ export function buildDashboardData(
   coveragePct: number | null = null,
   mutationScoreBaselinePct: number | null = null,
   mutationScoreCurrentPct: number | null = null,
+  candidates: QuarantineCandidate[] = [],
 ): DashboardData {
   const allTests = events.filter((e): e is TestSummaryEvent => e.type === 'test');
   const latest = latestAttemptPerTest(allTests);
@@ -59,7 +60,11 @@ export function buildDashboardData(
   const skipped = latest.filter((t) => t.outcome === 'skipped').length;
 
   const groups = groupFailures(allTests);
-  const proposed = flakyHistoryEntries(groups, 'this-run', now.toISOString());
+  // Read from the persistent candidates file (quarantine-candidates.json, cross-run history via
+  // computeCandidates), not this run's own flaky groups — a candidate is "flaky often enough
+  // across the last N runs", which this single run's events can't answer by themselves. A
+  // candidate already promoted into quarantine.json is excluded so it doesn't show in both cards.
+  const proposed = candidates.filter((c) => !c.testTitlePaths.some((p) => isQuarantined(p, quarantine)));
 
   return {
     generatedAt: now.toISOString(),
@@ -322,8 +327,17 @@ function readMutationScores(): { baseline: number | null; current: number | null
 function main(): void {
   const events = readAllRunEvents(OBSERVABILITY_DIR);
   const quarantine = readQuarantineList();
+  const candidates = readCandidates();
   const mutationScores = readMutationScores();
-  const data = buildDashboardData(events, quarantine, new Date(), readCoveragePct(), mutationScores.baseline, mutationScores.current);
+  const data = buildDashboardData(
+    events,
+    quarantine,
+    new Date(),
+    readCoveragePct(),
+    mutationScores.baseline,
+    mutationScores.current,
+    candidates,
+  );
   const html = renderDashboard(data);
 
   const outDir = process.argv[2] ?? path.join('allure-report', 'dashboard');

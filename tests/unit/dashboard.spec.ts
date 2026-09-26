@@ -4,7 +4,7 @@
 import { test, expect } from '@playwright/test';
 import { buildDashboardData, renderDashboard, namespaceTestIds } from '../../src/failure-analysis/dashboard';
 import { ObservabilityEvent, TestSummaryEvent } from '../../src/observability/types';
-import { QuarantineEntry } from '../../src/failure-analysis/quarantine';
+import { QuarantineCandidate, QuarantineEntry } from '../../src/failure-analysis/quarantine';
 
 function makeTest(overrides: Partial<TestSummaryEvent>): TestSummaryEvent {
   return {
@@ -57,17 +57,54 @@ test.describe('buildDashboardData', () => {
     expect(data.groups[0].count).toBe(2);
   });
 
-  test('an all-flaky group is proposed for quarantine; a genuinely-failed one is not', () => {
-    const events: ObservabilityEvent[] = [
-      makeTest({ testId: 't1', outcome: 'flaky', retry: 0, error: { message: 'HealError: ' } }),
-      makeTest({ testId: 't1', outcome: 'flaky', retry: 1 }),
-      makeTest({ testId: 't2', outcome: 'unexpected', error: { message: 'Error: expect(1).toBe(2)' } }),
+  test("proposed-for-quarantine comes from the persistent candidates list, not this run's own flaky groups", () => {
+    // A test can be flaky in THIS run's events without being a candidate (one-off blip), and a
+    // candidate from cross-run history can be absent from this run's events entirely (not
+    // re-run, or genuinely stable this time) — the two are independent inputs on purpose.
+    const events: ObservabilityEvent[] = [makeTest({ testId: 't1', outcome: 'expected' })];
+    const candidates: QuarantineCandidate[] = [
+      {
+        signature: 'HealError: …',
+        category: 'ai-healing',
+        testTitlePaths: ['> ui > suite > flaky test'],
+        occurrences: 4,
+        windowSize: 10,
+        sampleRunFiles: ['run-1.jsonl'],
+      },
     ];
 
-    const data = buildDashboardData(events, []);
+    const data = buildDashboardData(events, [], new Date(), null, null, null, candidates);
 
     expect(data.proposedForQuarantineCount).toBe(1);
     expect(data.proposedForQuarantine[0].category).toBe('ai-healing');
+    expect(data.proposedForQuarantine[0].testTitlePaths).toEqual(['> ui > suite > flaky test']);
+  });
+
+  test('a candidate already promoted into quarantine.json is excluded from proposed-for-quarantine', () => {
+    const candidates: QuarantineCandidate[] = [
+      {
+        signature: 'HealError: …',
+        category: 'ai-healing',
+        testTitlePaths: ['> ui > suite > already quarantined'],
+        occurrences: 6,
+        windowSize: 10,
+        sampleRunFiles: ['run-1.jsonl'],
+      },
+    ];
+    const quarantine: QuarantineEntry[] = [
+      {
+        signature: 'HealError: …',
+        testTitlePaths: ['> ui > suite > already quarantined'],
+        addedAt: '2026-01-01T00:00:00Z',
+        expiresAt: '2026-12-31T00:00:00Z',
+        reason: 'flaky',
+      },
+    ];
+
+    const data = buildDashboardData([], quarantine, new Date(), null, null, null, candidates);
+
+    expect(data.proposedForQuarantineCount).toBe(0);
+    expect(data.quarantinedCount).toBe(1);
   });
 
   test('reflects the currently-quarantined and expired-TTL counts from the entries it is given', () => {
