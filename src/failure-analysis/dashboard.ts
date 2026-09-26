@@ -186,7 +186,13 @@ export function renderDashboard(data: DashboardData): string {
   .card.proposed .num { color: var(--amber); }
   .card.quarantined .num { color: var(--purple); }
   .card.coverage .num { color: var(--blue); }
-  .card.mutation .num { color: var(--blue); white-space: nowrap; font-size: 1.375rem; }
+  /* container query, not a vw-based clamp: this card's width depends on how many sibling cards
+     fit per row (auto-fit minmax above), which vw can't see — a 375px-viewport 2-per-row layout
+     still overflowed at 6vw≈22.5px because the card itself was only ~160px wide. The container
+     must be the CARD itself (not the .cards grid, which is much wider than one card) for cqw to
+     track the space actually available to this text. */
+  .card.mutation { container-type: inline-size; }
+  .card.mutation .num { color: var(--blue); white-space: nowrap; font-size: clamp(0.7rem, 10cqw, 1.375rem); }
   .card.mutation .num.up { color: var(--green); }
   .card.mutation .num.down { color: var(--red); }
   h2 { font-size: 1.125rem; font-weight: 600; margin: 2rem 0 0.75rem; }
