@@ -15,7 +15,13 @@ import { ALLOWED_TARGET_FILES } from '../../src/agent-fixer/safety-gates';
 import { AffectedResult } from '../../src/test-selection/affected-tests';
 
 function affected(overrides: Partial<AffectedResult> = {}): AffectedResult {
-  return { specs: ['tests/ui/practice-form.spec.ts'], runAll: false, changedFiles: [...ALLOWED_TARGET_FILES], ...overrides };
+  return {
+    specs: ['tests/ui/practice-form.spec.ts'],
+    runAll: false,
+    changedFiles: [...ALLOWED_TARGET_FILES],
+    affected: [{ spec: 'tests/ui/practice-form.spec.ts', reasons: [...ALLOWED_TARGET_FILES] }],
+    ...overrides,
+  };
 }
 
 test.describe('evaluateStability — defensive fallback path', () => {

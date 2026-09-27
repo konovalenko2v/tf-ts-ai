@@ -8,11 +8,11 @@
 // book-store-register-user.ts: the driver must never be allowed to pick (or silently reuse) the
 // account it operates on.
 
-import { test } from '../../src/ui/fixtures';
-import { achieve } from '../../src/ui/pages/book-store-profile.page';
-import { bookStoreRemoveBooksGoal } from '../../src/goal-evolution/goals/book-store-remove-books';
-import { BookStoreClient } from '../../src/api/clients/book-store.client';
-import { config } from '../../src/core/config';
+import { test } from '../../../src/ui/fixtures';
+import { achieve } from '../../../src/ui/pages/book-store-profile.page';
+import { bookStoreRemoveBooksGoal } from '../../../src/goal-evolution/goals/book-store-remove-books';
+import { BookStoreClient } from '../../../src/api/clients/book-store.client';
+import { config } from '../../../src/core/config';
 
 const ISBN_SPEAKING_JS = '9781449365035';
 const ISBN_YOU_DONT_KNOW_JS = '9781491904244';

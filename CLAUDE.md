@@ -19,7 +19,7 @@ duplicate README content here; link to its section (`README.md#N`) instead.
 | Affected-test selection                                                            | `src/test-selection/`                                                                                                                                                 | README §5                        |
 | Jira red-test triage                                                               | `src/jira-triage/`                                                                                                                                                    | README §6                        |
 | Self-evolving test suite (new edge-case test → PR)                                 | `src/test-evolution/`                                                                                                                                                 | README §7                        |
-| Goal-based tests (prose goal → agent-written driver)                               | `src/goal-evolution/` (`goal.ts`, `goals/*.ts`, `run.ts`, `propose-driver.ts`)                                                                                        | README §8                        |
+| Goal-based tests (prose goal → agent-written driver)                               | `src/goal-evolution/` (`goal.ts`, `goals/*.ts`, `run.ts`, `propose-driver.ts`, `recon.ts`, `scaffold.ts`)                                                             | README §8                        |
 | API onboarding (OpenAPI/Swagger spec → typed client + AI-written test)             | `src/api-onboarder/` (`run.ts`, `generate-client.ts`, `generate-schema.ts`, `openapi-types.ts`, `propose-onboarding.ts`)                                              | —                                |
 | Page-knowledge cache (per-page DOM/behavior notes)                                 | `docs/page-knowledge/*.md` — see directory listing, not this line (frequently stale, see note below)                                                                  | README §9                        |
 | AI personas / model tiers                                                          | `ai-agents/personas/*.md` (system prompts), `ai-agents/profiles/{cheap,paranoid}.env`, `src/ai-agents/cli-fallback.ts`, `gemini-text.ts`                              | README §10                       |
@@ -58,7 +58,8 @@ npm run failure-analysis       # cause grouping + retry verdicts + quarantine-ca
 npm run check-quarantine-ttl   # CI gate: fails if a quarantine.json entry is past its TTL
 npm run link-healed-tests      # posts a same-run Allure deep-link to each self-healed test's CI step summary
 npm run test-evolution         # AI proposes + runs + PRs one new edge-case test
-npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user | book-store-remove-books
+npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user | book-store-remove-books | alerts-confirm
+npm run goal-evolution:new -- <id> <path> "<description>"   # scaffold recon+registration for a new UI goal; oracle stays human-written
 npm run api-onboarder -- <spec-url> [api-name]   # OpenAPI/Swagger spec -> typed client + AI-written test
 npm run jira-triage [observability-run-file]   # defaults to latest .observability/run-*.jsonl
 npm run qa-analyst -- <requirement-file>

@@ -17,10 +17,18 @@ const TSCONFIG_PATH = path.join(REPO_ROOT, 'tsconfig.json');
 // options, CI steps, dependency versions) — never try to scope these, just run everything.
 const FALLBACK_TRIGGERS = ['playwright.config.ts', 'tsconfig.json', 'package.json', 'package-lock.json'];
 
+export interface AffectedSpec {
+  spec: string;
+  /** Changed file(s) that pulled this spec in — repo-relative, one per import-graph hit. */
+  reasons: string[];
+}
+
 export interface AffectedResult {
   specs: string[];
   runAll: boolean;
   changedFiles: string[];
+  /** Same specs as `specs`, each paired with which changed file(s) actually caused the match. */
+  affected: AffectedSpec[];
 }
 
 function changedFiles(baseRef: string): string[] {
@@ -110,7 +118,7 @@ export function getAffectedSpecs(baseRef: string): AffectedResult {
   const changed = changedFiles(baseRef);
 
   if (triggersFallback(changed)) {
-    return { specs: [], runAll: true, changedFiles: changed };
+    return { specs: [], runAll: true, changedFiles: changed, affected: [] };
   }
 
   const compilerOptions = loadCompilerOptions();
@@ -119,17 +127,21 @@ export function getAffectedSpecs(baseRef: string): AffectedResult {
 
   const changedAbsolute = new Set(changed.map((f) => path.normalize(path.join(REPO_ROOT, f))));
 
-  const affected = specFiles.filter((spec) => {
+  const affected: AffectedSpec[] = [];
+  for (const spec of specFiles) {
     const deps = collectLocalDependencies(spec, compilerOptions, memo);
-    for (const dep of deps) {
-      if (changedAbsolute.has(dep)) return true;
+    // Every changed file that's actually in this spec's dependency graph, not just the first —
+    // a spec touched by two unrelated changes should say so, not silently pick one reason.
+    const reasons = [...deps].filter((dep) => changedAbsolute.has(dep)).map((dep) => path.relative(REPO_ROOT, dep));
+    if (reasons.length > 0) {
+      affected.push({ spec: path.relative(REPO_ROOT, spec), reasons });
     }
-    return false;
-  });
+  }
 
   return {
-    specs: affected.map((f) => path.relative(REPO_ROOT, f)),
+    specs: affected.map((a) => a.spec),
     runAll: false,
     changedFiles: changed,
+    affected,
   };
 }

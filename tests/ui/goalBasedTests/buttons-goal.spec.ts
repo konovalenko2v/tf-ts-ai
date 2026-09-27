@@ -4,9 +4,9 @@
 // same page context right after the agent-written achieve(page) returns. See src/goal-evolution/goal.ts
 // for why this split is what makes the goal-based result trustworthy instead of self-reported.
 
-import { test } from '../../src/ui/fixtures';
-import { achieve } from '../../src/ui/pages/buttons.page';
-import { buttonsDynamicClickGoal } from '../../src/goal-evolution/goals/buttons-dynamic-click';
+import { test } from '../../../src/ui/fixtures';
+import { achieve } from '../../../src/ui/pages/buttons.page';
+import { buttonsDynamicClickGoal } from '../../../src/goal-evolution/goals/buttons-dynamic-click';
 
 test.describe('DemoQA UI @ Buttons (goal-based)', () => {
   // Title is the goal's short id, not its full prose description — a Playwright/Allure test title
