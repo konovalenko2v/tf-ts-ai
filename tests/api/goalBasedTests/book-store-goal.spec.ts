@@ -9,8 +9,8 @@
 // duplicate-registration failure pass anyway.
 
 import { test } from '@playwright/test';
-import { achieve } from '../../src/api/clients/book-store.client';
-import { bookStoreRegisterUserGoal, cleanupUser } from '../../src/goal-evolution/goals/book-store-register-user';
+import { achieve } from '../../../src/api/clients/book-store.client';
+import { bookStoreRegisterUserGoal, cleanupUser } from '../../../src/goal-evolution/goals/book-store-register-user';
 
 test.describe('DemoQA Book Store (goal-based)', () => {
   test(bookStoreRegisterUserGoal.id, async ({ request }) => {

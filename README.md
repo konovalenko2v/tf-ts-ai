@@ -603,7 +603,8 @@ not wired into `regression.yml` yet.
 ## 8. Goal-Based Tests
 
 ```bash
-npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user | book-store-remove-books (default: buttons-dynamic-click)
+npm run goal-evolution -- <goal-id>   # buttons-dynamic-click | book-store-register-user | book-store-remove-books | alerts-confirm (default: buttons-dynamic-click)
+npm run goal-evolution:new -- <id> <path> "<description>"   # scaffold a new UI goal — see "Adding a new goal" below
 ```
 
 `src/goal-evolution/` is a different kind of test authoring than [Self-Evolving Test
@@ -687,9 +688,28 @@ book-store-register.md` documents _two_ possible paths (a CAPTCHA-blocked UI for
   > `page.evaluate`/`waitForFunction`, so the agent had no in-repo pattern to copy and `propose-driver.ts` never
   > states the DOM lib is unavailable — a prompt/example gap, not an agent mistake, in the same spirit as the
   > `achieveSignature` note in `goal.ts`.
+- `alerts-confirm` (UI) — a fourth goal, scaffolded via `npm run goal-evolution:new` (see "Adding a new goal"
+  below) rather than hand-written like the first three: `docs/page-knowledge/alerts.md` was generated entirely by
+  `src/goal-evolution/recon.ts`'s headless probing, not typed by hand. Recon caught a real mistake a human guess
+  made during the same session — the timed alert's message ("This alert appeared after 5 seconds") was assumed to
+  match the immediate alert's ("You clicked a button") until the probe proved otherwise. The oracle
+  (`succeedsWhen`) was still written by a human after reading the generated file, per the split below.
+
+**Adding a new goal.** `npm run goal-evolution:new -- <id> <path> "<description>"` automates everything EXCEPT the
+oracle: it runs deterministic headless recon against `<path>` (no AI — enumerating interactive elements, probing
+every button-like element for a native dialog it produces, both accept and dismiss branches, and diffing two
+page loads to catch ids that regenerate — the same class of fact `docs/page-knowledge/buttons.md` and
+`alerts.md` were built on by hand), writes `docs/page-knowledge/<id>.md` from what it actually observed, adds a
+`config.ts` host entry, generates the `Goal` file and human-owned spec file, and registers the goal in
+`run.ts`'s `REGISTRY`. The generated goal file's `succeedsWhen` throws an `ORACLE_NOT_WRITTEN` error instead of
+an empty or always-passing body — `run.ts` checks for this marker before spending any AI call, so a scaffolded-
+but-unfinished goal fails fast and loud, not silently "passes" on a vacuous check. Writing `succeedsWhen` itself
+stays a human step, for the same reason the agent never writes it: a scaffolder-authored oracle would just move
+the self-report problem from the agent to the tool, not solve it. Skips recon (never overwrites) if
+`docs/page-knowledge/<id>.md` already exists — those files are hand-curated truth once written.
 
 > [!NOTE]
-> This is a **demo-scale example**, not a general framework: three goals, deliberately chosen to have no CI wiring
+> This is a **demo-scale example**, not a general framework: four goals, deliberately chosen to have no CI wiring
 > and no branch/PR flow like `test-evolution` has. The first two goals also had no existing Page Object/client to
 > build on; `book-store-remove-books` is the exception — it reuses `BookStoreLoginPage`, since exercising reuse of
 > an existing Page Object is itself part of what that goal demonstrates.

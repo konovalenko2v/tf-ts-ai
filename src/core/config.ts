@@ -39,6 +39,7 @@ export const config = {
   webTablesHost: `${uiBaseHost}/webtables`,
   bookStoreListHost: `${uiBaseHost}/books`,
   linksHost: `${uiBaseHost}/links`,
+  alertsHost: `${uiBaseHost}/alerts`,
 };
 
 export function requireEnv(name: string): string {

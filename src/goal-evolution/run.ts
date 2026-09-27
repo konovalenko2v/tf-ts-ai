@@ -31,6 +31,8 @@ import { Goal } from './goal';
 import { buttonsDynamicClickGoal } from './goals/buttons-dynamic-click';
 import { bookStoreRegisterUserGoal } from './goals/book-store-register-user';
 import { bookStoreRemoveBooksGoal } from './goals/book-store-remove-books';
+import { alertsConfirmGoal } from './goals/alerts-confirm';
+import { ORACLE_NOT_WRITTEN_MARKER } from './scaffold';
 
 const MAX_ATTEMPTS = 2; // see book-store-register-user.ts: each attempt can register a real user
 // on a third-party server, so this is an orphan-account multiplier, not just a token budget —
@@ -52,17 +54,22 @@ interface RunEntry {
 const REGISTRY: Record<string, RunEntry> = {
   'buttons-dynamic-click': {
     goal: buttonsDynamicClickGoal,
-    specFile: 'tests/ui/buttons-goal.spec.ts',
+    specFile: 'tests/ui/goalBasedTests/buttons-goal.spec.ts',
     project: 'ui',
   },
   'book-store-register-user': {
     goal: bookStoreRegisterUserGoal,
-    specFile: 'tests/api/book-store-goal.spec.ts',
+    specFile: 'tests/api/goalBasedTests/book-store-goal.spec.ts',
     project: 'api',
   },
   'book-store-remove-books': {
     goal: bookStoreRemoveBooksGoal,
-    specFile: 'tests/ui/book-store-remove-books-goal.spec.ts',
+    specFile: 'tests/ui/goalBasedTests/book-store-remove-books-goal.spec.ts',
+    project: 'ui',
+  },
+  'alerts-confirm': {
+    goal: alertsConfirmGoal,
+    specFile: 'tests/ui/goalBasedTests/alerts-confirm-goal.spec.ts',
     project: 'ui',
   },
 };
@@ -123,6 +130,19 @@ function report(entry: RunEntry, attempt: number, reason: StopReason, detail: st
 async function main(): Promise<void> {
   if (!entry) {
     throw new Error(`unknown goal id "${goalId}" — known goals: ${Object.keys(REGISTRY).join(', ')}`);
+  }
+
+  // A goal scaffolded by `npm run goal-evolution:new` ships with a succeedsWhen that throws this
+  // marker instead of an empty/always-passing body (see scaffold.ts's header) — checked BEFORE any
+  // AI spend, by reading the goal file's own source, not by running it (the throw only fires when
+  // the spec calls succeedsWhen, which is after generation already happened).
+  if (ORACLE_NOT_WRITTEN_MARKER && entry.goal.succeedsWhen.toString().includes(ORACLE_NOT_WRITTEN_MARKER)) {
+    process.stderr.write(
+      `[goal-evolution] "${entry.goal.id}" has no oracle yet — its succeedsWhen was scaffolded, not written.\n` +
+        `Read ${entry.goal.pageKnowledgeFile} and write succeedsWhen in src/goal-evolution/goals/${entry.goal.id}.ts before running this goal.\n`,
+    );
+    process.exitCode = 1;
+    return;
   }
 
   const driverPath = path.join(__dirname, '../..', entry.goal.driverFile);
