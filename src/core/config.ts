@@ -20,6 +20,9 @@ function envUrl(name: string, fallback: string): string {
 const apiHost = envUrl('API_BASE_URL', 'https://restful-booker.herokuapp.com');
 const uiBaseHost = envUrl('UI_BASE_URL', 'https://demoqa.com');
 const gqlHost = envUrl('GRAPHQL_BASE_URL', 'https://eu-central-1-shared-euc1-02.cdn.hygraph.com/content/clv6lwqu7000001w690st4vix/master');
+// VRR ("Vacation Rental Reservations", QA Hiring Exercise — Boom) is a separate deployment from
+// the DemoQA UI above — its own base host, not derived from uiBaseHost.
+const vrrHost = envUrl('VRR_BASE_URL', 'http://35.166.143.87:8080');
 
 export const config = {
   host: apiHost,
@@ -39,6 +42,8 @@ export const config = {
   webTablesHost: `${uiBaseHost}/webtables`,
   bookStoreListHost: `${uiBaseHost}/books`,
   linksHost: `${uiBaseHost}/links`,
+  vrrHost,
+  vrrLoginHost: `${vrrHost}/login`,
 };
 
 export function requireEnv(name: string): string {

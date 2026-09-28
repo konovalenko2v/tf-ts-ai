@@ -4,7 +4,7 @@
 import { test, expect } from '@playwright/test';
 import { generateClientFile } from '../../src/api-onboarder/generate-client';
 import { emittableSchemaNames, generateTypesBarrel, supportsSchemaGeneration } from '../../src/api-onboarder/generate-schema';
-import { resolveBaseUrl, resolveSchemas, refName, OpenApiDocument } from '../../src/api-onboarder/openapi-types';
+import { resolveBaseUrl, resolveSchemas, refName, findLoginOperation, OpenApiDocument } from '../../src/api-onboarder/openapi-types';
 
 const SAMPLE_DOC: OpenApiDocument = {
   swagger: '2.0',
@@ -101,6 +101,47 @@ test.describe('resolveBaseUrl', () => {
   test('falls back to the given host when the doc has none', () => {
     const doc: OpenApiDocument = { paths: {}, schemes: ['https'] };
     expect(resolveBaseUrl(doc, 'fallback.example')).toBe('https://fallback.example');
+  });
+
+  test('uses the fallback origin scheme, not a hardcoded https, when the doc has no servers/schemes', () => {
+    // Regression: an OpenAPI 3.1 doc with neither `servers` nor Swagger-2.0 `schemes` used to
+    // always resolve to https:// regardless of what scheme the spec was actually fetched over —
+    // confirmed live against a plain-HTTP-only demo API, where every generated request then failed
+    // with an SSL protocol error instead of reaching the real endpoint.
+    const doc: OpenApiDocument = { paths: {} };
+    expect(resolveBaseUrl(doc, 'http://35.166.143.87:8080')).toBe('http://35.166.143.87:8080');
+  });
+
+  test('resolves a relative servers[0].url against a non-https fallback origin', () => {
+    const doc: OpenApiDocument = { paths: {}, servers: [{ url: '/api' }] };
+    expect(resolveBaseUrl(doc, 'http://35.166.143.87:8080')).toBe('http://35.166.143.87:8080/api');
+  });
+});
+
+test.describe('findLoginOperation', () => {
+  test('finds a POST operation whose path contains "login"', () => {
+    const doc: OpenApiDocument = {
+      paths: {
+        '/api/auth/login': { post: { operationId: 'login_api_auth_login_post' } },
+        '/api/properties': { get: { operationId: 'list_properties' } },
+      },
+    };
+    expect(findLoginOperation(doc)).toEqual({ path: '/api/auth/login', operationId: 'login_api_auth_login_post' });
+  });
+
+  test('matches on operationId when the path itself does not say "login"', () => {
+    const doc: OpenApiDocument = { paths: { '/session': { post: { operationId: 'signIn' } } } };
+    expect(findLoginOperation(doc)).toEqual({ path: '/session', operationId: 'signIn' });
+  });
+
+  test('returns undefined when no operation looks like a login endpoint', () => {
+    const doc: OpenApiDocument = { paths: { '/api/properties': { get: { operationId: 'list_properties' } } } };
+    expect(findLoginOperation(doc)).toBeUndefined();
+  });
+
+  test('ignores a GET on a path containing "login" — a login action is a POST, not a query', () => {
+    const doc: OpenApiDocument = { paths: { '/login': { get: { operationId: 'loginPage' } } } };
+    expect(findLoginOperation(doc)).toBeUndefined();
   });
 });
 
