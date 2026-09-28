@@ -268,4 +268,37 @@ test.describe('VRR UI @ Reservations', () => {
 
     await steps.cancelReservationByGuestEmail(guestEmail);
   });
+
+  // Not a bug — the server already rejects an over-capacity booking with a 422 either way (see
+  // "booking more guests than a property sleeps..." above), so nothing incorrect ships. This is a
+  // UX enhancement gap: confirmed live that the Adults/Children <input type="number"> fields carry
+  // a fixed max="20" each, unrelated to whichever Property is selected — reselecting Mountain
+  // Cabin (max_guests: 8, see Properties grid) doesn't tighten either field's max, so the form
+  // still lets a user pick up to 20+20=40 guests before the server has to say no. A better UX
+  // would cap Adults+Children at the selected property's own sleeps number, so the mismatch is
+  // impossible to reach instead of being caught after the fact.
+  test("enhancement: Adults/Children max is not capped to the selected property's sleeps count", async ({ page }) => {
+    const steps = new VrrSteps(page);
+
+    // Mountain Cabin sleeps 8 (see Properties grid) — a property deliberately far below the
+    // fields' fixed max of 20 each, so the mismatch is unambiguous either way it's read.
+    await steps.fillReservationForm({
+      property: 'Mountain Cabin',
+      guestName: 'Enhancement Probe Guest',
+      guestEmail: 'enhancement-probe@example.com',
+      checkIn: '2027-10-01',
+      checkOut: '2027-10-02',
+      adults: 1,
+    });
+
+    const adultsMax = await page.locator('[data-testid="input-adults"]').getAttribute('max');
+    const childrenMax = await page.locator('[data-testid="input-children"]').getAttribute('max');
+
+    expect(adultsMax).toBe('20');
+    expect(childrenMax).toBe('20');
+    // Today's behavior: the form lets this much through client-side even though Mountain Cabin
+    // only sleeps 8 — the enhancement would be to cap each field (or their sum) to the property's
+    // own max_guests once selected, rather than a fixed, property-independent 20.
+    expect(Number(adultsMax) + Number(childrenMax)).toBeGreaterThan(8);
+  });
 });

@@ -11,11 +11,15 @@ on:
         type: choice
         default: DEFAULT
         options: [DEFAULT, DEBUG]
+      # GitHub Actions has no multi-select input type — `choice` only ever returns one value — so
+      # picking several projects at once (e.g. "api,vrr") needs a free-text field instead. "All"
+      # (the default) or blank both mean "run the standard api+graphql+ui set", matching what
+      # push/pull_request already do; anything else is split on commas and passed through as
+      # `--project=<x>` per entry.
       project:
-        description: 'Playwright project to run (branch picker above chooses which branch this runs from)'
-        type: choice
+        description: 'Playwright project(s) to run — comma-separated (e.g. "api,vrr,ui"), or "All" for the default api+graphql+ui set'
+        type: string
         default: All
-        options: [All, unit, contract, api, graphql, vrr, ui]
   pull_request:
     branches: [master]
 
@@ -259,34 +263,39 @@ jobs:
       # carve-out entirely; until then this keeps Dependabot PRs green on the parts credentials
       # can't gate rather than red on missing infrastructure.
       - name: Run tests
-        # PROJECT_FLAGS is set below the step, not inline here, since `inputs.project` is only
-        # ever present on workflow_dispatch — push/pull_request leave it '', and the default
-        # ('' or 'All') must resolve to the same fixed api+graphql+ui list this always ran,
-        # so a manual run with no explicit project pick behaves exactly like today's push/PR runs.
+        # inputs.project only exists on workflow_dispatch — push/pull_request leave PROJECT_INPUT
+        # unset, so the case-default below ('All') resolves to today's exact fixed api+graphql+ui
+        # list for both of those triggers, unchanged. On workflow_dispatch, a comma-separated
+        # value like "api,vrr,ui" is split into one --project= flag per entry — GitHub Actions has
+        # no native multi-select input, so free-text + comma-split is what stands in for it.
         run: |
           if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
             echo "Dependabot PR — unit/contract/typecheck/lint/format already ran in the unit job; nothing else to run here."
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             npm run test:affected -- --project=api --project=graphql --project=ui --shard=${{ matrix.shard }}/${{ matrix.shard-count }}
           else
+            case "$PROJECT_INPUT" in
+              ""|All|all)
+                PROJECT_FLAGS="--project=api --project=graphql --project=ui"
+                ;;
+              *)
+                PROJECT_FLAGS=""
+                IFS=',' read -ra PICKED <<< "$PROJECT_INPUT"
+                for p in "${PICKED[@]}"; do
+                  p="$(echo "$p" | xargs)" # trim stray whitespace around each comma-separated entry
+                  [ -n "$p" ] && PROJECT_FLAGS="$PROJECT_FLAGS --project=$p"
+                done
+                ;;
+            esac
+            echo "Resolved project flags: $PROJECT_FLAGS"
             npm test -- $PROJECT_FLAGS --shard=${{ matrix.shard }}/${{ matrix.shard-count }}
           fi
         env:
-          # workflow_dispatch with a specific project picked -> just that one project; every other
-          # trigger (push, or workflow_dispatch left at the 'All' default) keeps today's fixed
-          # api+graphql+ui set, unchanged.
-          PROJECT_FLAGS: >-
-            ${{ (github.event_name == 'workflow_dispatch' && inputs.project != 'All' && inputs.project != '')
-                && format('--project={0}', inputs.project)
-                || '--project=api --project=graphql --project=ui' }}
+          PROJECT_INPUT: ${{ inputs.project }}
           BOOKER_USERNAME: ${{ vars.BOOKER_USERNAME }}
           USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
           BOOK_STORE_USERNAME: ${{ secrets.BOOK_STORE_USERNAME }}
           BOOK_STORE_PASSWORD: ${{ secrets.BOOK_STORE_PASSWORD }}
-          # No repo secret exists yet — global-setup.ts's fail-fast check only covers `api`, so
-          # picking `vrr` here with these unset won't fail in 2s like a missing BOOKER_USERNAME
-          # does; it fails per-test instead (vrrCredentials() in the spec throws a clear error).
-          # Run `gh secret set VRR_USERNAME`/`VRR_PASSWORD` once to make the vrr project runnable.
           VRR_USERNAME: ${{ secrets.VRR_USERNAME }}
           VRR_PASSWORD: ${{ secrets.VRR_PASSWORD }}
           SELF_HEAL: '1'
