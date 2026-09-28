@@ -11,6 +11,11 @@ on:
         type: choice
         default: DEFAULT
         options: [DEFAULT, DEBUG]
+      project:
+        description: 'Playwright project to run (branch picker above chooses which branch this runs from)'
+        type: choice
+        default: All
+        options: [All, unit, contract, api, graphql, vrr, ui]
   pull_request:
     branches: [master]
 
@@ -254,19 +259,36 @@ jobs:
       # carve-out entirely; until then this keeps Dependabot PRs green on the parts credentials
       # can't gate rather than red on missing infrastructure.
       - name: Run tests
+        # PROJECT_FLAGS is set below the step, not inline here, since `inputs.project` is only
+        # ever present on workflow_dispatch — push/pull_request leave it '', and the default
+        # ('' or 'All') must resolve to the same fixed api+graphql+ui list this always ran,
+        # so a manual run with no explicit project pick behaves exactly like today's push/PR runs.
         run: |
           if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
             echo "Dependabot PR — unit/contract/typecheck/lint/format already ran in the unit job; nothing else to run here."
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             npm run test:affected -- --project=api --project=graphql --project=ui --shard=${{ matrix.shard }}/${{ matrix.shard-count }}
           else
-            npm test -- --project=api --project=graphql --project=ui --shard=${{ matrix.shard }}/${{ matrix.shard-count }}
+            npm test -- $PROJECT_FLAGS --shard=${{ matrix.shard }}/${{ matrix.shard-count }}
           fi
         env:
+          # workflow_dispatch with a specific project picked -> just that one project; every other
+          # trigger (push, or workflow_dispatch left at the 'All' default) keeps today's fixed
+          # api+graphql+ui set, unchanged.
+          PROJECT_FLAGS: >-
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.project != 'All' && inputs.project != '')
+                && format('--project={0}', inputs.project)
+                || '--project=api --project=graphql --project=ui' }}
           BOOKER_USERNAME: ${{ vars.BOOKER_USERNAME }}
           USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
           BOOK_STORE_USERNAME: ${{ secrets.BOOK_STORE_USERNAME }}
           BOOK_STORE_PASSWORD: ${{ secrets.BOOK_STORE_PASSWORD }}
+          # No repo secret exists yet — global-setup.ts's fail-fast check only covers `api`, so
+          # picking `vrr` here with these unset won't fail in 2s like a missing BOOKER_USERNAME
+          # does; it fails per-test instead (vrrCredentials() in the spec throws a clear error).
+          # Run `gh secret set VRR_USERNAME`/`VRR_PASSWORD` once to make the vrr project runnable.
+          VRR_USERNAME: ${{ secrets.VRR_USERNAME }}
+          VRR_PASSWORD: ${{ secrets.VRR_PASSWORD }}
           SELF_HEAL: '1'
           AI_PROVIDER: 'google'
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
