@@ -101,6 +101,9 @@ export default defineConfig({
     {
       name: 'api',
       testMatch: '**/tests/api/**/*.spec.ts',
+      // Onboarded specs (tests/api/vrr-*.spec.ts) get their own 'vrr' project below — excluded
+      // here so they don't double-run under both projects.
+      testIgnore: '**/tests/api/vrr-*.spec.ts',
       fullyParallel: false,
       // auth.client.ts / booking.client.ts build relative paths against this. BookStoreClient
       // (a goal-evolution driver, src/goal-evolution/goals/book-store-*.ts) stays on absolute
@@ -111,6 +114,16 @@ export default defineConfig({
     {
       name: 'graphql',
       testMatch: '**/tests/graphql/**/*.spec.ts',
+      fullyParallel: false,
+    },
+    {
+      // Onboarded via `npm run api-onboarder` (src/api-onboarder/run.ts) — split out from the
+      // `api` project so onboarded specs show as their own row in reports and don't inherit the
+      // `api` project's Restful Booker baseURL, which every VRR client call ignores anyway (each
+      // generated client carries its own absolute baseUrl, resolved from the spec — see
+      // resolveBaseUrl in src/api-onboarder/openapi-types.ts).
+      name: 'vrr',
+      testMatch: '**/tests/api/vrr-*.spec.ts',
       fullyParallel: false,
     },
     {

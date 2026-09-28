@@ -15,7 +15,7 @@ import { execFileSync } from 'child_process';
 import { fetchSpec } from './fetch-spec';
 import { generateSchemaFile, generateTypesBarrel, emittableSchemaNames, supportsSchemaGeneration } from './generate-schema';
 import { generateClientFile } from './generate-client';
-import { resolveBaseUrl } from './openapi-types';
+import { resolveBaseUrl, findLoginOperation } from './openapi-types';
 import { proposeOnboarding } from './propose-onboarding';
 
 const OUTPUT_ROOT = 'src/api-onboarder/generated';
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
   const apiName = process.argv[3] ?? doc.info?.title ?? 'api';
   const className = `${toClassName(apiName)}Client`;
   const dirName = toDirName(apiName);
-  const baseUrl = resolveBaseUrl(doc, new URL(specUrl).host);
+  const baseUrl = resolveBaseUrl(doc, new URL(specUrl).origin);
 
   const outDir = path.join(OUTPUT_ROOT, dirName);
   const schemaFile = path.join(outDir, 'schema.ts');
@@ -124,6 +124,11 @@ async function main(): Promise<void> {
 
   const statusBefore = execFileSync('git', ['status', '--short']).toString();
 
+  // Env var names are derived from apiName, not hand-picked per API — CLAUDE.md rule #4 ("nothing
+  // hardcoded") plus this staying generic for the next API someone onboards, not just this one.
+  const envPrefix = dirName.toUpperCase().replace(/-/g, '_');
+  const loginOp = findLoginOperation(doc);
+
   try {
     proposeOnboarding({
       apiName,
@@ -132,6 +137,13 @@ async function main(): Promise<void> {
       stepsOutputFile: stepsFile,
       specOutputFile: specFile,
       baseUrl,
+      loginHint: loginOp
+        ? {
+            methodName: loginOp.operationId ?? '(no operationId — check generated client for the actual method name)',
+            usernameEnvVar: `${envPrefix}_USERNAME`,
+            passwordEnvVar: `${envPrefix}_PASSWORD`,
+          }
+        : undefined,
     });
   } catch (err) {
     process.stderr.write(`[api-onboarder] AI CLI failed (all tiers): ${(err as Error).message}\n`);
