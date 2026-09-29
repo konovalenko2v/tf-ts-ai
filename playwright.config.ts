@@ -64,7 +64,13 @@ export default defineConfig({
   ],
   use: {
     trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    // Not 'only-on-failure': that produced a second, un-highlighted screenshot attachment
+    // alongside src/ui/fixtures.ts's own 'failure-highlight' one (which scrolls the failed
+    // locator into view and outlines it in red before shooting) — the two looked confusingly
+    // similar side by side in Allure/ReportPortal, and the highlighted one is strictly more
+    // useful. trace: 'retain-on-failure' above still captures its own per-step screenshots
+    // regardless of this setting, so failure investigation isn't losing coverage.
+    screenshot: 'off',
   },
   projects: [
     {
