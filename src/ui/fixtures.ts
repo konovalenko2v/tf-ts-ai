@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { test as base, Page } from '@playwright/test';
+import { test as base, expect as baseExpect, Page, Locator } from '@playwright/test';
 import { withHealing, HealError, HealPage, HealMethods } from 'healwright';
 import { tag } from 'allure-js-commons';
 import { readHealEventsRaw, renderStrategy } from '../failure-analysis/heal-events';
@@ -275,4 +275,91 @@ export const test = base.extend<{ page: HealPage }>({
     }
   },
 });
-export { expect } from '@playwright/test';
+// Duck-typed rather than `instanceof Locator` — Playwright's Locator has no public class export
+// usable with `instanceof` across the test runner's module boundary; `.evaluateAll`/`.page` are
+// two methods every real Locator has and a string/number/Page/APIResponse assertion target does
+// not, which is what `expect(locator)` needs to be told apart from every other `expect(...)` call
+// this repo also makes (`expect(response.status())`, `expect(count)`, etc.).
+function looksLikeLocator(value: unknown): value is Locator {
+  const v = value as { evaluateAll?: unknown; page?: unknown } | null | undefined;
+  return typeof v?.evaluateAll === 'function' && typeof v?.page === 'function';
+}
+
+// Playwright's own `screenshot: 'only-on-failure'` already captures the full page on failure, but
+// gives no indication of WHICH element the failed assertion was about — a viewer has to guess from
+// the error text alone. This wraps `expect(locator)...` (matchers only — see looksLikeLocator
+// above) so that when a matcher throws, the target locator gets a 2px red outline injected via
+// evaluateAll (a no-op if it resolved to zero elements, e.g. a toBeVisible() on a missing node)
+// and a fresh screenshot is attached immediately, before Playwright's own failure teardown fires.
+// Does not touch testInfo.error (which only ever carries a stack-trace string, not a resolvable
+// Locator — confirmed against the Playwright version this repo pins) and does not change what the
+// test actually asserts: the original error is always rethrown unchanged.
+async function highlightAndScreenshot(locator: Locator): Promise<void> {
+  try {
+    // Runs inside the browser page (evaluateAll's callback), not this Node process — this repo's
+    // tsconfig has no `dom` lib target, so DOM types like HTMLElement/CSSStyleDeclaration aren't
+    // available here; setAttribute (a plain Element method, no DOM lib needed to type) appends to
+    // the element's existing inline style rather than replacing it, same net effect as
+    // style.setProperty without requiring the CSSStyleDeclaration type.
+    await locator.evaluateAll((els) => {
+      for (const el of els) {
+        const existing = el.getAttribute('style') ?? '';
+        el.setAttribute('style', `${existing}; outline: 2px solid red !important; outline-offset: 1px !important;`);
+      }
+    });
+    // A viewport-only screenshot (the default) can miss the outlined element entirely if it sits
+    // below the fold — confirmed live: the first version of this attachment showed the top of the
+    // page with no badge in frame at all. scrollIntoViewIfNeeded() on the first match brings that
+    // element into view before the shot; a locator matching several elements only guarantees the
+    // first one is framed, which is the same element highlightAndScreenshot's caller already
+    // reported the mismatch against in the assertion's own "Received" line.
+    await locator.first().scrollIntoViewIfNeeded();
+    const screenshot = await locator.page().screenshot();
+    await base.info().attach('failure-highlight', { body: screenshot, contentType: 'image/png' });
+  } catch {
+    // Best-effort only — a page already navigating away, closed, or a locator matching nothing
+    // must never mask the real assertion failure below with a screenshot-plumbing error instead.
+  }
+}
+
+// Wraps every matcher method on the object `expect(locator)` returns (toBeVisible, toHaveText,
+// toHaveAttribute, ...) so a failure from any of them triggers the highlight-and-screenshot above.
+// `.not` is itself a getter returning another object with the exact same shape, so this recurses
+// into it the same way plain property access does — `expect(locator).not.toBeVisible()` gets the
+// same treatment as `expect(locator).toBeVisible()`, with no separate case needed for `.not`.
+// Non-function properties (there are none of real interest on a matcher-result object beyond
+// `.not`) pass through untouched rather than being wrapped, and `soft`/`poll`/`configure`/`extend`
+// live on `baseExpect` itself, one level up — never reached here — so `expect.soft(...)` call
+// sites (see src/ui/steps/vrr.steps.ts's verifyRowMatchesInput) are untouched by this proxy.
+function wrapMatchers<M extends object>(matchers: M, locator: Locator): M {
+  return new Proxy(matchers, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value === 'function') {
+        return async (...args: unknown[]) => {
+          try {
+            return await (value as (...a: unknown[]) => unknown).apply(target, args);
+          } catch (err) {
+            await highlightAndScreenshot(locator);
+            throw err;
+          }
+        };
+      }
+      if (prop === 'not' && value && typeof value === 'object') {
+        return wrapMatchers(value as object, locator);
+      }
+      return value;
+    },
+  });
+}
+
+const expect: typeof baseExpect = new Proxy(baseExpect, {
+  apply(target, thisArg, args: [unknown]) {
+    const result = Reflect.apply(target, thisArg, args);
+    const [value] = args;
+    if (!looksLikeLocator(value)) return result;
+    return wrapMatchers(result, value);
+  },
+});
+
+export { expect };
