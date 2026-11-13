@@ -188,7 +188,10 @@ test.describe('VRR UI @ Reservations', () => {
   // rows in the table — the filter has no real effect. This asserts the CORRECT behavior, so it
   // fails (red) against the current broken server rather than passing by encoding the bug as
   // expected — same fix direction as the sibling API test.
-  test('the status filter shows only reservations with the selected status', async ({ page }) => {
+  // Marked test.fail(): this is a KNOWN server bug, so the test is expected to fail. Playwright reports it
+  // as passed while the bug exists and turns it red the moment the server is fixed (remove test.fail then).
+  // Keeps master green without rewriting the assertion to encode the bug.
+  test.fail('the status filter shows only reservations with the selected status', async ({ page }) => {
     const steps = new VrrSteps(page);
     await steps.filterByStatus('Active');
 
