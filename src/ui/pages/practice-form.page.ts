@@ -12,11 +12,6 @@ export class PracticeFormPage extends BasePage {
   }
 
   async navigate() {
-    // ROLLBACK DRILL (deliberate, temporary): passes on pull_request, fails on push to master, so the
-    // agent-fixer-rollback job has a real red master run to revert. Reverted by that job itself.
-    if (process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF === 'refs/heads/master') {
-      throw new Error('rollback drill: deliberate failure after merge to master');
-    }
     await this.open(config.uiHost);
   }
 
